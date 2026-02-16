@@ -1,0 +1,46 @@
+import MenuScene from "./scenes/MenuScene.js";
+import RaceScene from "./scenes/RaceScene.js";
+import uiScene from "./scenes/uiScene.js";
+import CharScene from "./scenes/CharScene.js";
+
+const config = {
+	type: Phaser.AUTO,
+	parent: "game-container",
+	width: 1280,     // use full available width
+	height: 720,   // optional: full height
+
+	backgroundColor: "#000000",
+
+	pixelArt: true,
+
+	// render: {
+	// 	roundPixels: true,
+	// 	antialias: false,
+	// 	resolution: 1
+	// },
+
+	scale: {
+		mode: Phaser.Scale.EXPAND,
+		autoCenter: Phaser.Scale.CENTER_BOTH,
+		orientation: Phaser.Scale.LANDSCAPE,
+		// width: window.innerWidth,     // use full available width
+		// height: window.innerHeight,   // optional: full height
+	},
+
+	physics: {
+		default: "matter",
+		matter: {
+			debug: false,
+			gravity: { x: 0, y: 0 }
+		}
+	},
+
+
+	input: {
+		activePointers: 3
+	},
+
+	scene: [MenuScene, RaceScene, uiScene, CharScene]
+};
+
+new Phaser.Game(config);

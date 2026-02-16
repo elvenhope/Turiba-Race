@@ -1,7 +1,8 @@
 import MenuScene from "./scenes/MenuScene.js";
 import RaceScene from "./scenes/RaceScene.js";
-import uiScene from "./scenes/uiScene.js";
+import UIScene from "./scenes/UIScene.js";
 import CharScene from "./scenes/CharScene.js";
+import FinishOverlay from './scenes/FinishOverlay.js';
 
 const config = {
 	type: Phaser.AUTO,
@@ -11,7 +12,7 @@ const config = {
 
 	backgroundColor: "#000000",
 
-	pixelArt: true,
+	pixelArt: false,
 
 	// render: {
 	// 	roundPixels: true,
@@ -30,7 +31,7 @@ const config = {
 	physics: {
 		default: "matter",
 		matter: {
-			debug: false,
+			debug: true,
 			gravity: { x: 0, y: 0 }
 		}
 	},
@@ -40,7 +41,7 @@ const config = {
 		activePointers: 3
 	},
 
-	scene: [MenuScene, RaceScene, uiScene, CharScene]
+	scene: [MenuScene, RaceScene, UIScene, CharScene, FinishOverlay]
 };
 
 new Phaser.Game(config);

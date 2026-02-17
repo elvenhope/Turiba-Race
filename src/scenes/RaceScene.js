@@ -188,6 +188,7 @@ export default class RaceScene extends Phaser.Scene {
 		this.car.setBounce(0);
 		this.car.setFixedRotation();
 		this.car.setDepth(10);
+		this.car.setMass(2);
 
 		// Spawn remote players
 		if (this.roomData && this.roomData.players) {

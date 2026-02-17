@@ -8,124 +8,196 @@ export default class UIScene extends Phaser.Scene {
 		this.steerRight = false;
 	}
 
+	// Touch controls only shown on mobile (wide aspect ratio = phone in landscape)
+	get isMobile() {
+		return (this.scale.width / this.scale.height) > 1.9;
+	}
+
+	preload() {
+		this.load.image("arrow_up",    "assets/arrow_up.png");
+		this.load.image("arrow_down",  "assets/arrow_down.png");
+		this.load.image("arrow_left",  "assets/arrow_left.png");
+		this.load.image("arrow_right", "assets/arrow_right.png");
+	}
+
 	create() {
-		// Reset state variables
-		this.touchAccel = false;
-		this.touchBrake = false;
-		this.steerLeft = false;
-		this.steerRight = false;
-		this.overlay = null;
+		this.touchAccel  = false;
+		this.touchBrake  = false;
+		this.steerLeft   = false;
+		this.steerRight  = false;
+		this.overlay     = null;
 		this.overlayButtons = [];
-		
+
 		const { width, height } = this.scale;
 
-		// Fixed camera for UI
 		this.cameras.main.setScroll(0, 0);
 		this.cameras.main.setZoom(1);
 
-		// Circle radius (responsive)
-		this.radius = Math.min(width, height) * 0.15;
-
 		// --- Lap display ---
 		this.lapText = this.add.text(width - 200, 16, "Lap: 0/3", {
-			fontSize: "32px",
-			fontFamily: "Arial",
-			color: "#ffffff",
+			fontSize:        "32px",
+			fontFamily:      "Arial",
+			color:           "#ffffff",
 			backgroundColor: "#000000",
-			padding: { x: 10, y: 5 }
+			padding:         { x: 10, y: 5 },
 		}).setDepth(1000);
 
-		// Remove any existing lapUpdate listener before adding new one
 		this.events.off("lapUpdate");
-		
-		// Listen for lap updates from RaceScene
 		this.events.on("lapUpdate", (currentLap, maxLaps) => {
 			this.lapText.setText(`Lap: ${currentLap}/${maxLaps}`);
 		});
 
-		// --- Touch buttons ---
-		this.leftBtn = this.add.circle(0, 0, this.radius, 0x0000ff, 0.3).setInteractive();
-		this.rightBtn = this.add.circle(0, 0, this.radius, 0x0000ff, 0.3).setInteractive();
-		this.upBtn = this.add.circle(0, 0, this.radius, 0xff0000, 0.3).setInteractive();
-		this.downBtn = this.add.circle(0, 0, this.radius, 0xff0000, 0.3).setInteractive();
-		this.positionCircles();
+		// --- Arrow buttons ---
+		this.leftBtn  = this.makeArrow("arrow_left",  "left");
+		this.rightBtn = this.makeArrow("arrow_right", "right");
+		this.upBtn    = this.makeArrow("arrow_up",    "up");
+		this.downBtn  = this.makeArrow("arrow_down",  "down");
 
-		this.addInput(this.leftBtn, "left");
-		this.addInput(this.rightBtn, "right");
-		this.addInput(this.upBtn, "up");
-		this.addInput(this.downBtn, "down");
+		this.positionArrows();
 
-		// --- Overlay / Burger Menu ---
-		this.overlay = null;
+		// --- Burger menu ---
+		this.overlay        = null;
 		this.overlayButtons = [];
-		this.burgerBtn = null;
+		this.burgerBtn      = null;
 		this.createBurgerMenu();
 
-		// --- Resize listener ---
 		this.scale.on("resize", this.onResize, this);
 	}
 
-	addInput(circle, dir) {
-		circle.on("pointerdown", () => this.events.emit(`${dir}-down`));
-		circle.on("pointerup", () => this.events.emit(`${dir}-up`));
-		circle.on("pointerout", () => this.events.emit(`${dir}-up`));
+	// ─────────────────────────────────────────────────────────────
+	//  ARROW FACTORY
+	//  Fix: store img.baseScale after setDisplaySize so the release
+	//  tween returns to exactly that value — not scale=1 which equals
+	//  the texture's native pixel size and overshoots the display size.
+	// ─────────────────────────────────────────────────────────────
+	makeArrow(textureKey, dir) {
+		const img = this.add.image(0, 0, textureKey)
+			.setAlpha(0)          // hidden until positionArrows decides visibility
+			.setDepth(500);
+
+		img.baseScale = 1;        // updated by applyArrowSize()
+
+		img.on("pointerdown", () => {
+			this.tweens.killTweensOf(img);
+			this.tweens.add({
+				targets:  img,
+				scale:    img.baseScale * 0.80,
+				alpha:    0.50,
+				duration: 60,
+				ease:     "Sine.easeOut",
+			});
+			this.events.emit(`${dir}-down`);
+		});
+
+		const release = () => {
+			this.tweens.killTweensOf(img);
+			this.tweens.add({
+				targets:  img,
+				scale:    img.baseScale,   // exact stored value, never overshoots
+				alpha:    0.85,
+				duration: 100,
+				ease:     "Sine.easeOut",
+			});
+			this.events.emit(`${dir}-up`);
+		};
+
+		img.on("pointerup",  release);
+		img.on("pointerout", release);
+
+		return img;
 	}
 
-	positionCircles() {
+	// Set display size and immediately snapshot the resulting scaleX as baseScale
+	applyArrowSize(img, size) {
+		img.setDisplaySize(size, size);
+		img.baseScale = img.scaleX;
+	}
+
+	// ─────────────────────────────────────────────────────────────
+	//  POSITIONING
+	// ─────────────────────────────────────────────────────────────
+	positionArrows() {
 		const { width, height } = this.scale;
-		this.radius = Math.min(width, height) * 0.15;
+		const mobile = this.isMobile;
 
-		// Left/Right
-		const yLR = height * 0.85;
-		const xLeft = width * 0.1;
-		const xRight = xLeft + this.radius * 2;
-		this.leftBtn.setPosition(xLeft, yLR).setRadius(this.radius);
-		this.rightBtn.setPosition(xRight, yLR).setRadius(this.radius);
+		// Show/hide + enable/disable interactivity based on platform
+		[this.leftBtn, this.rightBtn, this.upBtn, this.downBtn].forEach(btn => {
+			btn.setAlpha(mobile ? 0.85 : 0);
+			if (mobile) btn.setInteractive({ useHandCursor: true });
+			else        btn.disableInteractive();
+		});
 
-		// Up/Down
-		const xUD = width * 0.9;
-		const yUp = height * 0.6;
-		const yDown = yUp + this.radius * 2;
-		this.upBtn.setPosition(xUD, yUp).setRadius(this.radius);
-		this.downBtn.setPosition(xUD, yDown).setRadius(this.radius);
+		if (!mobile) return;
 
-		// Burger button top-left
+		// Larger arrows for touch — 18% of the shorter screen dimension
+		const s   = Math.min(width, height) * 0.18;
+		const gap = s * 1;
+		// Inset keeps arrows fully on screen (half arrow width + small margin)
+		const inset = s * 1;
+
+		// ── Left / Right — bottom-left ──
+		const yLR    = height - inset;
+		const xLeft  = inset;
+		const xRight = inset + s + gap;
+
+		this.applyArrowSize(this.leftBtn,  s);
+		this.applyArrowSize(this.rightBtn, s);
+		this.leftBtn.setPosition(xLeft,  yLR);
+		this.rightBtn.setPosition(xRight, yLR);
+
+		// ── Up / Down — bottom-right ──
+		const xUD   = width - inset;
+		const yDown = height - inset;
+		const yUp   = yDown - s - gap;
+
+		this.applyArrowSize(this.upBtn,   s);
+		this.applyArrowSize(this.downBtn, s);
+		this.upBtn.setPosition(xUD, yUp);
+		this.downBtn.setPosition(xUD, yDown);
+
+		// Burger button
 		if (this.burgerBtn) this.burgerBtn.setPosition(50, 50);
 
-		// Overlay background
+		// Overlay
 		if (this.overlay) {
 			const bg = this.overlay.getByName("bg");
 			if (bg) {
-				bg.setSize(this.scale.width, this.scale.height);
-				bg.setPosition(this.scale.width / 2, this.scale.height / 2);
+				bg.setSize(width, height);
+				bg.setPosition(width / 2, height / 2);
 			}
-			// Reposition overlay buttons
-			const btnStartY = this.scale.height * 0.3;
+			const btnStartY = height * 0.3;
 			this.overlayButtons.forEach((btn, i) => {
-				btn.setPosition(this.scale.width / 2, btnStartY + i * 80);
+				btn.setPosition(width / 2, btnStartY + i * 80);
 			});
 		}
 	}
 
-	onResize(gameSize) {
-		this.positionCircles();
+	onResize() {
+		if (!this.scene.isActive("UIScene")) return;
+		this.positionArrows();
+		if (this.lapText) {
+			this.lapText.setPosition(this.scale.width - 200, 16);
+		}
 	}
 
-	// ---------------- Overlay / Burger Menu ----------------
+	// ─────────────────────────────────────────────────────────────
+	//  BURGER MENU
+	// ─────────────────────────────────────────────────────────────
 	createBurgerMenu() {
-		// Simple burger icon
-		this.burgerBtn = this.add.text(50, 50, "☰", { fontSize: "48px", color: "#ffffff" })
-			.setInteractive({ useHandCursor: true });
+		this.burgerBtn = this.add.text(50, 50, "☰", {
+			fontSize: "48px",
+			color:    "#ffffff",
+		}).setInteractive({ useHandCursor: true }).setDepth(1000);
+
 		this.burgerBtn.on("pointerup", () => this.showOverlay());
 	}
 
 	showOverlay() {
 		if (this.overlay) return;
 
-		this.overlay = this.add.container(0, 0);
-		this.overlay.alpha = 0; // start invisible
+		this.overlay       = this.add.container(0, 0);
+		this.overlay.alpha = 0;
 
-		// Semi-transparent background
 		const bg = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x000000, 0.6)
 			.setOrigin(0, 0)
 			.setName("bg");
@@ -135,82 +207,59 @@ export default class UIScene extends Phaser.Scene {
 		this.overlayButtons = [];
 
 		options.forEach((text, i) => {
-			const btn = this.add.text(this.scale.width / 2, this.scale.height * 0.3 + i * 80, text, {
-				fontSize: "48px",
-				color: "#ffffff"
-			}).setOrigin(0.5).setInteractive({ useHandCursor: true });
+			const btn = this.add.text(
+				this.scale.width / 2,
+				this.scale.height * 0.3 + i * 80,
+				text,
+				{ fontSize: "48px", color: "#ffffff" }
+			).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
 			btn.on("pointerup", () => this.handleOverlayAction(text));
 			this.overlay.add(btn);
 			this.overlayButtons.push(btn);
 		});
 
-		// Fade in overlay
-		this.tweens.add({
-			targets: this.overlay,
-			alpha: 1,
-			duration: 300,
-			ease: "Power2"
-		});
+		this.tweens.add({ targets: this.overlay, alpha: 1, duration: 300, ease: "Power2" });
 	}
 
 	hideOverlay() {
 		if (!this.overlay) return;
-
 		this.tweens.add({
-			targets: this.overlay,
-			alpha: 0,
-			duration: 300,
-			ease: "Power2",
+			targets:    this.overlay,
+			alpha:      0,
+			duration:   300,
+			ease:       "Power2",
 			onComplete: () => {
 				this.overlay.destroy(true);
-				this.overlay = null;
+				this.overlay        = null;
 				this.overlayButtons = [];
-			}
+			},
 		});
 	}
 
 	handleOverlayAction(action) {
 		switch (action) {
-			case "Resume":
-				this.hideOverlay();
-				break;
-			case "Options":
-				console.log("Options clicked");
-				break;
-			case "Back to Menu":
-				this.hideOverlay();
-				this.quitRace();
-				break;
+			case "Resume":       this.hideOverlay();  break;
+			case "Options":      console.log("Options clicked"); break;
+			case "Back to Menu": this.hideOverlay(); this.quitRace(); break;
 		}
 	}
 
 	quitRace() {
-		// Get the RaceScene to access the socket
 		const raceScene = this.scene.get("RaceScene");
-		
-		if (raceScene && raceScene.socket) {
-			// Disconnect socket - this will trigger the server's disconnect handler
-			// which already handles removePlayer and roomUpdate
-			raceScene.socket.disconnect();
-		}
-		
-		// Stop both scenes
+		if (raceScene && raceScene.socket) raceScene.socket.disconnect();
 		this.scene.stop("RaceScene");
 		this.scene.stop("UIScene");
-		
-		// Start menu scene
 		this.scene.start("MenuScene");
 	}
 
 	resetOverlay() {
 		if (this.overlay) this.overlay.destroy(true);
-		this.overlay = null;
+		this.overlay        = null;
 		this.overlayButtons = [];
 	}
 
 	shutdown() {
-		// Clean up all event listeners when scene is stopped
 		this.events.off("lapUpdate");
 		this.scale.off("resize", this.onResize, this);
 	}

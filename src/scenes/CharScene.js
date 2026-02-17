@@ -79,6 +79,9 @@ export default class CharScene extends Phaser.Scene {
     //  CREATE
     // ─────────────────────────────────────────────────────────────
     create() {
+		this.uiCreated = false;
+		this.currentIndex = 0;
+
         WebFont.load({
             // CamingoDos Pro must be declared via @font-face in your HTML.
             // Barlow Condensed is a Google Fonts fallback with a similar bold-condensed feel.
@@ -372,7 +375,9 @@ export default class CharScene extends Phaser.Scene {
             null,         // no fill
             0xF7934E, 5,  // orange stroke
             "#F7934E",    // orange text
-            () => this.scene.start("MenuScene")
+            () => {
+				this.scene.start("MenuScene")
+			}
         );
 
         // START — blue fill, no stroke
@@ -569,6 +574,7 @@ export default class CharScene extends Phaser.Scene {
     //  RESIZE
     // ─────────────────────────────────────────────────────────────
     onResize(gameSize) {
+		if (!this.scene.isActive("CharScene")) return;
         if (!this.uiCreated) return;
         const { width: w, height: h } = gameSize;
 
@@ -616,5 +622,8 @@ export default class CharScene extends Phaser.Scene {
         }
     }
 
-    shutdown() { this.cleanupSocket(); }
+    shutdown() { 
+		this.scale.off("resize", this.onResize, this);
+		this.cleanupSocket(); 
+	}
 }

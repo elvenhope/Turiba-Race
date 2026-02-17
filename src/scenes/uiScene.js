@@ -9,6 +9,14 @@ export default class UIScene extends Phaser.Scene {
 	}
 
 	create() {
+		// Reset state variables
+		this.touchAccel = false;
+		this.touchBrake = false;
+		this.steerLeft = false;
+		this.steerRight = false;
+		this.overlay = null;
+		this.overlayButtons = [];
+		
 		const { width, height } = this.scale;
 
 		// Fixed camera for UI
@@ -17,6 +25,23 @@ export default class UIScene extends Phaser.Scene {
 
 		// Circle radius (responsive)
 		this.radius = Math.min(width, height) * 0.15;
+
+		// --- Lap display ---
+		this.lapText = this.add.text(16, 16, "Lap: 0/3", {
+			fontSize: "32px",
+			fontFamily: "Arial",
+			color: "#ffffff",
+			backgroundColor: "#000000",
+			padding: { x: 10, y: 5 }
+		}).setDepth(1000);
+
+		// Remove any existing lapUpdate listener before adding new one
+		this.events.off("lapUpdate");
+		
+		// Listen for lap updates from RaceScene
+		this.events.on("lapUpdate", (currentLap, maxLaps) => {
+			this.lapText.setText(`Lap: ${currentLap}/${maxLaps}`);
+		});
 
 		// --- Touch buttons ---
 		this.leftBtn = this.add.circle(0, 0, this.radius, 0x0000ff, 0.3).setInteractive();
@@ -155,16 +180,38 @@ export default class UIScene extends Phaser.Scene {
 				break;
 			case "Back to Menu":
 				this.hideOverlay();
-				this.resetOverlay();
-				this.scene.stop("RaceScene");
-				this.scene.start("MenuScene");
+				this.quitRace();
 				break;
 		}
+	}
+
+	quitRace() {
+		// Get the RaceScene to access the socket
+		const raceScene = this.scene.get("RaceScene");
+		
+		if (raceScene && raceScene.socket) {
+			// Disconnect socket - this will trigger the server's disconnect handler
+			// which already handles removePlayer and roomUpdate
+			raceScene.socket.disconnect();
+		}
+		
+		// Stop both scenes
+		this.scene.stop("RaceScene");
+		this.scene.stop("UIScene");
+		
+		// Start menu scene
+		this.scene.start("MenuScene");
 	}
 
 	resetOverlay() {
 		if (this.overlay) this.overlay.destroy(true);
 		this.overlay = null;
 		this.overlayButtons = [];
+	}
+
+	shutdown() {
+		// Clean up all event listeners when scene is stopped
+		this.events.off("lapUpdate");
+		this.scale.off("resize", this.onResize, this);
 	}
 }

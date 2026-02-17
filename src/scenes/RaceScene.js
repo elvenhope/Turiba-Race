@@ -7,7 +7,7 @@ export default class RaceScene extends Phaser.Scene {
 		this.steerLeft = false;
 		this.steerRight = false;
 
-		this.acceleration = 0.01;
+		this.acceleration = 0.003;
 		this.maxSpeed = 50;
 
 		this.socket = null;
@@ -28,6 +28,7 @@ export default class RaceScene extends Phaser.Scene {
 
 		this.myFinishPosition = null;
 		this.myPlayerName = null;
+		this.selectedChar = null;
 	}
 
 	init(data) {
@@ -35,16 +36,66 @@ export default class RaceScene extends Phaser.Scene {
 		this.roomData = data.roomData;
 		this.roomId = data.roomData.id;
 		this.maxLaps = data.roomData.maxLaps || 3;
+		this.selectedChar = data.selectedChar;
+
+		// Reset all internal state for clean start
+		this.touchAccel = false;
+		this.touchBrake = false;
+		this.steerLeft = false;
+		this.steerRight = false;
+		
+		this.remotePlayers = {};
+		this.lastNetUpdate = 0;
+		
+		this.currentLap = 0;
+		this.hasFinished = false;
+		this.checkpoints = [];
+		this.passedCheckpoints = new Set();
+		this.totalCheckpoints = 0;
+		
+		this.myFinishPosition = null;
+		this.myPlayerName = null;
 	}
 
 	preload() {
 		this.load.image("track_background.png", "assets/track_background.png");
 		this.load.image("trees.png", "assets/trees.png");
-		this.load.image("car", "assets/car.png");
 		this.load.tilemapTiledJSON("trackTMJ", "assets/Track.tmj");
+		
+		// Load all character cars (including for local player)
+		const allCharacters = [
+			{ name: "Tourism Faculty", car_path: "assets/Cars/Tourism.png" },
+			{ name: "IT Faculty", car_path: "assets/Cars/ITF.png" },
+			{ name: "Law Faculty", car_path: "assets/Cars/Law.png" },
+			{ name: "Business Faculty", car_path: "assets/Cars/Business.png" },
+			{ name: "Communications Faculty", car_path: "assets/Cars/Communications.png" },
+			{ name: "Healthcare Department", car_path: "assets/Cars/Healthcare.png" },
+			{ name: "Organization Department", car_path: "assets/Cars/Organization.png" },
+		];
+		
+		allCharacters.forEach(char => {
+			this.load.image(char.name + "_car", char.car_path);
+		});
 	}
 
 	create() {
+		// Reset all state variables to initial values
+		this.touchAccel = false;
+		this.touchBrake = false;
+		this.steerLeft = false;
+		this.steerRight = false;
+		
+		this.remotePlayers = {};
+		this.lastNetUpdate = 0;
+		
+		this.currentLap = 0;
+		this.hasFinished = false;
+		this.checkpoints = [];
+		this.passedCheckpoints = new Set();
+		this.totalCheckpoints = 0;
+		
+		this.myFinishPosition = null;
+		
 		const map = this.make.tilemap({ key: "trackTMJ" });
 
 		// Get the raw Tiled data to access image layers
@@ -68,108 +119,45 @@ export default class RaceScene extends Phaser.Scene {
 		// Set world bounds
 		this.matter.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
-		// --- Collisions ---
-		const collisionLayer = map.getObjectLayer("Collisions");
-		if (collisionLayer) {
-			collisionLayer.objects.forEach((obj, index) => {
-				console.log(`\n=== Processing object ${index} ===`);
-				console.log(`Type: ${obj.rectangle ? 'Rectangle' : obj.polygon ? 'Polygon' : 'Unknown'}`);
-				console.log(`Tiled position: (${obj.x}, ${obj.y})`);
+		// Get the Collisions layer
+		const collisionLayer = map.getObjectLayer('Collisions');
 
-				// if (index > 0) return;
-
-				if (obj.rectangle) {
-					const centerX = obj.x + obj.width / 2;
-					const centerY = obj.y + obj.height / 2;
-
-					console.log(`Rectangle center: (${centerX}, ${centerY})`);
-
-					this.matter.add.rectangle(
-						centerX,
-						centerY,
-						obj.width,
-						obj.height,
-						{ isStatic: true, angle: Phaser.Math.DegToRad(obj.rotation || 0) }
-					);
-				} else if (obj.polygon) {
-					console.log(`Raw polygon vertices from Tiled:`, obj.polygon);
-
-					// Convert to world coordinates
-					const worldVerts = obj.polygon.map(v => ({
-						x: obj.x + v.x,
-						y: obj.y + v.y
-					}));
-
-					console.log(`World vertices:`, worldVerts);
-
-					// Simple centroid calculation
-					let centerX = 0;
-					let centerY = 0;
-					worldVerts.forEach(v => {
-						centerX += v.x;
-						centerY += v.y;
-					});
-					centerX /= worldVerts.length;
-					centerY /= worldVerts.length;
-
-					console.log(`Calculated centroid: (${centerX.toFixed(2)}, ${centerY.toFixed(2)})`);
-
-					// Make vertices relative to centroid
-					const relativeVerts = worldVerts.map(v => ({
-						x: v.x - centerX,
-						y: v.y - centerY
-					}));
-
-					console.log(`Relative vertices:`, relativeVerts);
-
-					const Matter = Phaser.Physics.Matter.Matter;
-
-					try {
-						const body = Matter.Bodies.fromVertices(
-							centerX - 322,
-							centerY - 10,
-							relativeVerts,
-							{ isStatic: true },
-							true  // flagInternal - enables poly-decomp
-						);
-
-						if (body) {
-							const partCount = body.parts ? body.parts.length - 1 : 1;
-							console.log(`✓ Body created successfully`);
-							console.log(`  Decomposed into ${partCount} part(s)`);
-							console.log(`  Expected position: (${centerX.toFixed(2)}, ${centerY.toFixed(2)})`);
-							console.log(`  Actual position: (${body.position.x.toFixed(2)}, ${body.position.y.toFixed(2)})`);
-							console.log(`  Offset: (${(body.position.x - centerX).toFixed(2)}, ${(body.position.y - centerY).toFixed(2)})`);
-
-							this.matter.world.add(body);
-						} else {
-							console.log(`✗ Body creation returned null`);
-						}
-					} catch (error) {
-						console.error(`✗ Error creating polygon:`, error);
+		// Loop through each polyline
+		// Assuming you're using rectangle objects in Tiled
+		collisionLayer.objects.forEach(obj => {
+			if (obj.rectangle) {
+				// Create a simple Matter.js rectangle
+				const body = this.matter.add.rectangle(
+					obj.x + obj.width / 2,   // Center X
+					obj.y + obj.height / 2,  // Center Y
+					obj.width,               // Width
+					obj.height,              // Height
+					{
+						isStatic: true,
+						angle: obj.rotation * (Math.PI / 180)  // If you rotate in Tiled
 					}
-				}
-			});
-		}
+				);
+			}
+		});
 
 
 		// --- Checkpoints ---
 		const checkpointLayer = map.getObjectLayer("Checkpoints");
 		if (checkpointLayer) {
 			checkpointLayer.objects.forEach((obj, index) => {
-				// const checkpoint = this.matter.add.rectangle(
-				// 	obj.x + obj.width / 2,
-				// 	obj.y + obj.height / 2,
-				// 	obj.width,
-				// 	obj.height,
-				// 	{
-				// 		isStatic: true,
-				// 		isSensor: true,
-				// 		label: `checkpoint_${index}`,
-				// 		checkpointId: index
-				// 	}
-				// );
-				// this.checkpoints.push(checkpoint);
+				const checkpoint = this.matter.add.rectangle(
+					obj.x + obj.width / 2,
+					obj.y + obj.height / 2,
+					obj.width,
+					obj.height,
+					{
+						isStatic: true,
+						isSensor: true,
+						label: `checkpoint_${index}`,
+						checkpointId: index
+					}
+				);
+				this.checkpoints.push(checkpoint);
 			});
 			this.totalCheckpoints = this.checkpoints.length;
 		}
@@ -192,8 +180,10 @@ export default class RaceScene extends Phaser.Scene {
 		this.myPlayerName = me.name;
 
 		// --- Local Player ---
-		this.car = this.matter.add.sprite(me.spawnX, me.spawnY, "car");
-		this.car.setDisplaySize(100, this.car.height * (100 / this.car.width));
+		// Use the character-specific car key
+		const myCarKey = this.selectedChar.name + "_car";
+		this.car = this.matter.add.sprite(me.spawnX, me.spawnY, myCarKey);
+		this.car.setDisplaySize(60, this.car.height * (60 / this.car.width));
 		this.car.setFrictionAir(0.05);
 		this.car.setBounce(0);
 		this.car.setFixedRotation();
@@ -203,7 +193,7 @@ export default class RaceScene extends Phaser.Scene {
 		if (this.roomData && this.roomData.players) {
 			this.roomData.players.forEach(player => {
 				if (player.id !== this.socket.id) {
-					this.spawnRemotePlayer(player.id, player.spawnX, player.spawnY);
+					this.spawnRemotePlayer(player.id, player.spawnX, player.spawnY, player.name);
 				}
 			});
 		}
@@ -212,7 +202,7 @@ export default class RaceScene extends Phaser.Scene {
 		this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 		this.cameras.main.startFollow(this.car, false);
 		this.cameras.main.setRoundPixels(true);
-		this.cameras.main.setZoom(1);
+		this.cameras.main.setZoom(2);
 
 		this.cursors = this.input.keyboard.createCursorKeys();
 
@@ -227,14 +217,8 @@ export default class RaceScene extends Phaser.Scene {
 		uiScene.events.on("down-down", () => (this.touchBrake = true));
 		uiScene.events.on("down-up", () => (this.touchBrake = false));
 
-		// Lap display
-		this.lapText = this.add.text(16, 16, `Lap: ${this.currentLap}/${this.maxLaps}`, {
-			fontSize: "32px",
-			fontFamily: "Arial",
-			color: "#ffffff",
-			backgroundColor: "#000000",
-			padding: { x: 10, y: 5 }
-		}).setScrollFactor(0).setDepth(1000);
+		// Send initial lap info to UIScene
+		uiScene.events.emit("lapUpdate", this.currentLap, this.maxLaps);
 
 		// --- Collision detection ---
 		this.matter.world.on("collisionstart", (event) => {
@@ -269,6 +253,12 @@ export default class RaceScene extends Phaser.Scene {
 
 	setupSocketEvents() {
 		if (!this.socket) return;
+
+		// Remove any existing listeners to prevent duplicates
+		this.socket.off("playerMoved");
+		this.socket.off("playerLapUpdate");
+		this.socket.off("playerFinishedRace");
+		this.socket.off("disconnect");
 
 		this.socket.on("playerMoved", (data) => {
 			const remote = this.remotePlayers[data.id];
@@ -317,18 +307,21 @@ export default class RaceScene extends Phaser.Scene {
 		});
 	}
 
-	spawnRemotePlayer(id, x, y) {
-		const sprite = this.matter.add.sprite(x, y, "car");
-		sprite.setDisplaySize(100, sprite.height * (100 / sprite.width));
+	spawnRemotePlayer(id, x, y, playerName) {
+		// Use the character's car based on their name
+		const carKey = playerName + "_car";
+		const sprite = this.matter.add.sprite(x, y, carKey);
+		sprite.setDisplaySize(60, sprite.height * (60 / sprite.width));
 		sprite.setRectangle(sprite.displayWidth, sprite.displayHeight);
 		sprite.setStatic(true);
 		sprite.setDepth(10);
+		sprite.setRotation(Math.PI / 2); // Rotate 90 degrees so right-facing sprite points up
 
 		this.remotePlayers[id] = {
 			sprite,
 			targetX: x,
 			targetY: y,
-			targetRotation: 0,
+			targetRotation: Math.PI / 2,
 			currentLap: 0
 		};
 	}
@@ -359,7 +352,11 @@ export default class RaceScene extends Phaser.Scene {
 		this.currentLap++;
 		this.passedCheckpoints.clear();
 
-		this.lapText.setText(`Lap: ${this.currentLap}/${this.maxLaps}`);
+		// Notify UIScene to update lap display
+		const uiScene = this.scene.get("UIScene");
+		if (uiScene) {
+			uiScene.events.emit("lapUpdate", this.currentLap, this.maxLaps);
+		}
 
 		this.socket.emit("lapCompleted", {
 			roomId: this.roomId,
@@ -439,5 +436,38 @@ export default class RaceScene extends Phaser.Scene {
 		// Camera integer scroll
 		this.cameras.main.scrollX = Math.round(this.car.x - this.cameras.main.width * 0.5);
 		this.cameras.main.scrollY = Math.round(this.car.y - this.cameras.main.height * 0.5);
+	}
+
+	shutdown() {
+		// Clean up remote players
+		Object.values(this.remotePlayers).forEach(p => {
+			if (p.sprite) {
+				p.sprite.destroy();
+			}
+		});
+		this.remotePlayers = {};
+
+		// Clean up car reference
+		if (this.car) {
+			this.car = null;
+		}
+		
+		// Clean up socket listeners
+		if (this.socket) {
+			this.socket.off("playerMoved");
+			this.socket.off("playerLapUpdate");
+			this.socket.off("playerFinishedRace");
+			this.socket.off("disconnect");
+		}
+
+		// Clean up Matter.js collision listener
+		if (this.matter && this.matter.world) {
+			this.matter.world.off("collisionstart");
+		}
+
+		// Clean up input listener
+		if (this.input) {
+			this.input.off("pointerdown");
+		}
 	}
 }

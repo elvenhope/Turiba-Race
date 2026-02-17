@@ -3,10 +3,13 @@ export default class CharScene extends Phaser.Scene {
         super("CharScene");
 
         this.characters = [
-            { name: "Tourism Faculty", path: "assets/tourism_char.png" },
-            { name: "IT Faculty", path: "assets/tourism_char.png" },
-            { name: "Law Faculty", path: "assets/tourism_char.png" },
-            { name: "Business Faculty", path: "assets/tourism_char.png" },
+            { name: "Tourism Faculty", path: "assets/Characters/tourism.png", car_path: "assets/Cars/Tourism.png" },
+            { name: "IT Faculty", path: "assets/Characters/ITF.png", car_path: "assets/Cars/ITF.png" },
+            { name: "Law Faculty", path: "assets/Characters/law.png", car_path: "assets/Cars/Law.png" },
+            { name: "Business Faculty", path: "assets/Characters/business.png", car_path: "assets/Cars/Business.png" },
+			{ name: "Communications Faculty", path: "assets/Characters/communications.png", car_path: "assets/Cars/Communications.png" },
+			{ name: "Healthcare Department", path: "assets/Characters/healthcare.png", car_path: "assets/Cars/Healthcare.png" },
+			{ name: "Organization Department", path: "assets/Characters/organization.png", car_path: "assets/Cars/Organization.png" },
         ];
 
         this.currentIndex = 0;
@@ -111,6 +114,12 @@ export default class CharScene extends Phaser.Scene {
             "",
             { fontSize: "20px", color: "#ffffff" }
         ).setOrigin(0.5);
+
+        // Reset connection state when scene is created
+        this.isConnecting = false;
+        if (this.socket) {
+            this.cleanupSocket();
+        }
     }
 
     switchCharacter(direction) {
@@ -167,6 +176,8 @@ export default class CharScene extends Phaser.Scene {
         this.socket = io("http://localhost:3000");
 
         this.socket.on("connect", () => {
+            if (!this.scene.isActive()) return; // Check if scene is still active
+            
             this.waitingText.setText("Waiting for players...");
 
             this.socket.emit("joinRace", {
@@ -176,12 +187,16 @@ export default class CharScene extends Phaser.Scene {
         });
 
         this.socket.on("roomUpdate", (room) => {
+            if (!this.scene.isActive()) return; // Check if scene is still active
+            
             this.waitingText.setText(
                 `Players in room: ${room.players.length}/5`
             );
         });
 
         this.socket.on("startRace", (room) => {
+            if (!this.scene.isActive()) return; // Check if scene is still active
+            
             this.waitingText.setText("Race starting...");
 
             // Small delay for polish
@@ -199,9 +214,25 @@ export default class CharScene extends Phaser.Scene {
         });
 
         this.socket.on("disconnect", () => {
+            if (!this.scene.isActive()) return; // Check if scene is still active
+            
             this.waitingText.setText("Disconnected from server.");
             this.isConnecting = false;
             this.chooseBtn.setInteractive();
         });
+    }
+
+    cleanupSocket() {
+        if (this.socket) {
+            this.socket.removeAllListeners();
+            if (this.socket.connected) {
+                this.socket.disconnect();
+            }
+            this.socket = null;
+        }
+    }
+
+    shutdown() {
+        this.cleanupSocket();
     }
 }

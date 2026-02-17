@@ -113,6 +113,14 @@ export default class CharScene extends Phaser.Scene {
     }
 
     // ─────────────────────────────────────────────────────────────
+    //  DPR — used to render text at native pixel density so it stays
+    //  crisp even when Phaser's canvas is CSS-scaled by EXPAND mode.
+    //  Clamped to 3 so very high-DPI phones don't waste memory.
+    get dpr() {
+        return Math.min(window.devicePixelRatio || 1, 3);
+    }
+
+    // ─────────────────────────────────────────────────────────────
     //  BACKGROUND
     // ─────────────────────────────────────────────────────────────
     drawBackground(w, h) {
@@ -210,6 +218,7 @@ export default class CharScene extends Phaser.Scene {
             strokeThickness: 6,
             wordWrap:        { width: maxW, useAdvancedWrap: true },
             lineSpacing:     -10,
+            resolution:      this.dpr,
         }).setDepth(10);
 
         const descY = this.nameText.y + this.nameText.displayHeight + h * 0.02;
@@ -221,6 +230,7 @@ export default class CharScene extends Phaser.Scene {
             color:       "#ffffff",
             wordWrap:    { width: maxW, useAdvancedWrap: true },
             lineSpacing: 5,
+            resolution:  this.dpr,
         }).setDepth(10);
     }
 
@@ -259,6 +269,7 @@ export default class CharScene extends Phaser.Scene {
             fontSize:   "56px",
             fontStyle:  "bold",
             color:      "#ffffff",
+            resolution: this.dpr,
         };
         this.leftArrowBtn = this.add.text(0, 0, "<", arrowStyle)
             .setOrigin(0.5).setDepth(20).setInteractive({ useHandCursor: true });
@@ -400,6 +411,7 @@ export default class CharScene extends Phaser.Scene {
             fontStyle:  "bold",
             fontSize:   "24px",
             color:      textColor,
+            resolution: this.dpr,
         }).setOrigin(0.5);
 
         c.add([shadow, body, txt]);
@@ -417,6 +429,7 @@ export default class CharScene extends Phaser.Scene {
             fontFamily: "Arial",
             fontSize:   "20px",
             color:      "#ffffff",
+            resolution: this.dpr,
         }).setOrigin(0.5).setDepth(25);
     }
 
@@ -521,7 +534,8 @@ export default class CharScene extends Phaser.Scene {
         this.waitingText.setText("Connecting to server...");
 
         const selectedChar = this.characters[this.currentIndex];
-        this.socket = io("https://turiba-race-server.onrender.com");
+        // this.socket = io("https://turiba-race-server.onrender.com");
+		this.socket = io("localhost:3000");
 
         this.socket.on("connect", () => {
             if (!this.scene.isActive()) return;

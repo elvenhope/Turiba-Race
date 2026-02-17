@@ -190,7 +190,7 @@ export default class CharScene extends Phaser.Scene {
             if (!this.scene.isActive()) return; // Check if scene is still active
             
             this.waitingText.setText(
-                `Players in room: ${room.players.length}/5`
+                `Players in room: ${room.players.length}/4`
             );
         });
 

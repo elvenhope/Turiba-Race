@@ -27,7 +27,7 @@ export default class UIScene extends Phaser.Scene {
 		this.radius = Math.min(width, height) * 0.15;
 
 		// --- Lap display ---
-		this.lapText = this.add.text(16, 16, "Lap: 0/3", {
+		this.lapText = this.add.text(width - 200, 16, "Lap: 0/3", {
 			fontSize: "32px",
 			fontFamily: "Arial",
 			color: "#ffffff",

@@ -173,7 +173,7 @@ export default class CharScene extends Phaser.Scene {
         const selectedChar = this.characters[this.currentIndex];
 
         // Connect to server
-        this.socket = io("http://localhost:3000");
+        this.socket = io("https://turiba-race-server.onrender.com");
 
         this.socket.on("connect", () => {
             if (!this.scene.isActive()) return; // Check if scene is still active

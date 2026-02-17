@@ -2,11 +2,17 @@ const express = require("express");
 const path = require("path");
 const app = express();
 
-// Serve all static files (HTML, JS, images, etc.)
-app.use(express.static(__dirname));
+// Serve static files with correct MIME types
+app.use(express.static(__dirname, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    }
+  }
+}));
 
-// Fallback to index.html
-app.get("*", (req, res) => {
+// ONLY serve index.html for the root route
+app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 

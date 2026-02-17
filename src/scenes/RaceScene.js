@@ -7,8 +7,8 @@ export default class RaceScene extends Phaser.Scene {
 		this.steerLeft = false;
 		this.steerRight = false;
 
-		this.acceleration = 0.0002;  // Tuned for delta-time (was 0.003)
-		this.maxSpeed = 50;
+		this.acceleration = 0.0001;  // Tuned for delta-time (was 0.003)
+		this.maxSpeed = 20;
 
 		this.socket = null;
 		this.roomId = null;

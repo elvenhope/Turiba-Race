@@ -14,11 +14,11 @@ const config = {
 
 	pixelArt: false,
 
-	// render: {
-	// 	roundPixels: true,
-	// 	antialias: false,
-	// 	resolution: 1
-	// },
+	render: {
+        antialias:    true,   // smooth curves / diagonals on images
+        antialiasGL:  true,
+        roundPixels:  false,  // keep false — rounding blurs text at non-integer positions
+    },
 
 	scale: {
 		mode: Phaser.Scale.EXPAND,

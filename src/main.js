@@ -1,6 +1,6 @@
 import MenuScene from "./scenes/MenuScene.js";
 import RaceScene from "./scenes/RaceScene.js";
-import UIScene from "./scenes/UIScene.js";
+import UIScene from "./scenes/uiScene.js";
 import CharScene from "./scenes/CharScene.js";
 import FinishOverlay from './scenes/FinishOverlay.js';
 

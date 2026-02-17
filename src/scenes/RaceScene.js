@@ -7,7 +7,7 @@ export default class RaceScene extends Phaser.Scene {
 		this.steerLeft = false;
 		this.steerRight = false;
 
-		this.acceleration = 0.003;
+		this.acceleration = 0.0002;  // Tuned for delta-time (was 0.003)
 		this.maxSpeed = 50;
 
 		this.socket = null;
@@ -122,19 +122,16 @@ export default class RaceScene extends Phaser.Scene {
 		// Get the Collisions layer
 		const collisionLayer = map.getObjectLayer('Collisions');
 
-		// Loop through each polyline
-		// Assuming you're using rectangle objects in Tiled
 		collisionLayer.objects.forEach(obj => {
 			if (obj.rectangle) {
-				// Create a simple Matter.js rectangle
 				const body = this.matter.add.rectangle(
-					obj.x + obj.width / 2,   // Center X
-					obj.y + obj.height / 2,  // Center Y
-					obj.width,               // Width
-					obj.height,              // Height
+					obj.x + obj.width / 2,
+					obj.y + obj.height / 2,
+					obj.width,
+					obj.height,
 					{
 						isStatic: true,
-						angle: obj.rotation * (Math.PI / 180)  // If you rotate in Tiled
+						angle: obj.rotation * (Math.PI / 180)
 					}
 				);
 			}
@@ -180,15 +177,14 @@ export default class RaceScene extends Phaser.Scene {
 		this.myPlayerName = me.name;
 
 		// --- Local Player ---
-		// Use the character-specific car key
 		const myCarKey = this.selectedChar.name + "_car";
 		this.car = this.matter.add.sprite(me.spawnX, me.spawnY, myCarKey);
 		this.car.setDisplaySize(60, this.car.height * (60 / this.car.width));
+		this.car.setMass(1);  // Fixed mass so all cars behave identically regardless of texture size
 		this.car.setFrictionAir(0.05);
 		this.car.setBounce(0);
 		this.car.setFixedRotation();
 		this.car.setDepth(10);
-		this.car.setMass(2);
 
 		// Spawn remote players
 		if (this.roomData && this.roomData.players) {
@@ -240,7 +236,6 @@ export default class RaceScene extends Phaser.Scene {
 
 		// Click coordinate logger
 		this.input.on('pointerdown', (pointer) => {
-			// Get world coordinates (accounting for camera position)
 			const worldX = pointer.worldX;
 			const worldY = pointer.worldY;
 
@@ -309,14 +304,13 @@ export default class RaceScene extends Phaser.Scene {
 	}
 
 	spawnRemotePlayer(id, x, y, playerName) {
-		// Use the character's car based on their name
 		const carKey = playerName + "_car";
 		const sprite = this.matter.add.sprite(x, y, carKey);
 		sprite.setDisplaySize(60, sprite.height * (60 / sprite.width));
 		sprite.setRectangle(sprite.displayWidth, sprite.displayHeight);
 		sprite.setStatic(true);
 		sprite.setDepth(10);
-		sprite.setRotation(Math.PI / 2); // Rotate 90 degrees so right-facing sprite points up
+		sprite.setRotation(Math.PI / 2);
 
 		this.remotePlayers[id] = {
 			sprite,
@@ -390,18 +384,21 @@ export default class RaceScene extends Phaser.Scene {
 		const accelerating = this.cursors.up.isDown || this.touchAccel;
 		const braking = this.cursors.down.isDown || this.touchBrake;
 
+		// Multiply force by delta so speed is frame-rate independent
 		if (accelerating) {
-			const force = this.matter.vector.rotate({ x: this.acceleration, y: 0 }, this.car.rotation);
+			const force = this.matter.vector.rotate({ x: this.acceleration * delta, y: 0 }, this.car.rotation);
 			this.car.applyForce(force);
 		} else if (braking) {
-			const force = this.matter.vector.rotate({ x: -this.acceleration, y: 0 }, this.car.rotation);
+			const force = this.matter.vector.rotate({ x: -this.acceleration * delta, y: 0 }, this.car.rotation);
 			this.car.applyForce(force);
 		}
 
 		let steer = 0;
 		if (this.cursors.left.isDown || this.steerLeft) steer = -1;
 		else if (this.cursors.right.isDown || this.steerRight) steer = 1;
-		this.car.setAngularVelocity(steer * 0.05);
+
+		// Multiply angular velocity by delta so steering is frame-rate independent
+		this.car.setAngularVelocity(steer * 0.003 * delta);
 
 		const vel = this.car.body.velocity;
 		const speed = Math.hypot(vel.x, vel.y);

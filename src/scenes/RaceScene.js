@@ -310,13 +310,13 @@ export default class RaceScene extends Phaser.Scene {
 		sprite.setRectangle(sprite.displayWidth, sprite.displayHeight);
 		sprite.setStatic(true);
 		sprite.setDepth(10);
-		sprite.setRotation(Math.PI / 2);
+		sprite.setRotation(0);
 
 		this.remotePlayers[id] = {
 			sprite,
 			targetX: x,
 			targetY: y,
-			targetRotation: Math.PI / 2,
+			targetRotation: 0,
 			currentLap: 0
 		};
 	}

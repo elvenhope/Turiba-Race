@@ -395,11 +395,11 @@ export default class CreditsScene extends Phaser.Scene {
         const row2BottomY = curY + ROW_H;
 
         // ── DRAW ARROW 1 ──────────────────────────────────────────
-        items.push(this.drawTwistyArrow(
-            arrow1StartX, arrow1StartY,
-            van_imgX,     row2StartY + 10,
-            arrowMidY
-        ));
+        // items.push(this.drawTwistyArrow(
+        //     arrow1StartX, arrow1StartY,
+        //     van_imgX,     row2StartY + 10,
+        //     arrowMidY
+        // ));
 
         curY = row2BottomY + h * 0.04;
 
@@ -410,12 +410,12 @@ export default class CreditsScene extends Phaser.Scene {
         const arrow2MidY   = curY + ARROW2_GAP / 2;
         const arrow2EndY   = curY + ARROW2_GAP;
 
-        items.push(this.drawTwistyArrow(
-            arrow2StartX, arrow2StartY,
-            w / 2,        arrow2EndY,
-            arrow2MidY,
-            true
-        ));
+        // items.push(this.drawTwistyArrow(
+        //     arrow2StartX, arrow2StartY,
+        //     w / 2,        arrow2EndY,
+        //     arrow2MidY,
+        //     true
+        // ));
 
         curY = arrow2EndY + h * 0.02;
 

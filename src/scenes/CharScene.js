@@ -50,7 +50,7 @@ export default class CharScene extends Phaser.Scene {
 				path: "assets/Characters/organization.png",
 				car_path: "assets/Cars/Organization.png",
 				character_description: "Nowadays, organizational security is essential in both digital and physical environments. The demand for qualified security professionals is growing worldwide. Turiba Business School offers a bachelor's degree program in Organizational Security — the only one of its kind in the Baltics.",
-				color: "#C8D2D2"
+				color: "#929c9c"
 			},
 		];
 
@@ -80,7 +80,10 @@ export default class CharScene extends Phaser.Scene {
 	//  PRELOAD
 	// ─────────────────────────────────────────────────────────────
 	preload() {
-		this.characters.forEach(char => this.load.image(char.name, char.path));
+		this.characters.forEach(char => {
+			this.load.image(char.name, char.path);
+			this.load.image(char.name + "_car", char.car_path);
+		});
 		this.load.script("webfont", "https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js");
 	}
 
@@ -181,7 +184,7 @@ export default class CharScene extends Phaser.Scene {
 
 		// Size both dimensions relative to screen HEIGHT only — keeps strips
 		// visually identical on any aspect ratio (desktop wide or mobile landscape).
-		// Figma strip: 599.15 × 1594.10 px on 816px-tall canvas.
+		// Figma strip: 599.15 × 1594.10 px on 51rem-tall canvas.
 		const hw = (599.15 / 816 / 2) * h;   // half-width  ~0.367h
 		const hh = (1594.10 / 816 / 2) * h;   // half-height ~0.977h
 
@@ -198,13 +201,13 @@ export default class CharScene extends Phaser.Scene {
 		};
 
 		// Anchor X to screen centre so strips stay symmetric on any width.
-		// Figma canvas centre: 728px. Strip centres relative to that:
+		// Figma canvas centre: 45.5rem. Strip centres relative to that:
 		//   Strip 1: (959.95 - 728) = +231.95, y = 513.61
 		//   Strip 2: (1648.54 - 728) = +920.54, y = 662.15
 		// All scaled by h/816 so they scale with the strips.
 		const scale = h / 816;
-		drawStrip(w * 0.5 + 231.95 * scale, 513.61 * scale, 0.55);
-		drawStrip(w * 0.5 + 920.54 * scale, 662.15 * scale, 0.55);
+		drawStrip(w * 0.5 + 231.95 * scale, 513.61 * scale, 1);
+		drawStrip(w * 0.5 + 920.54 * scale, 662.15 * scale, 1 );
 	}
 
 	// ─────────────────────────────────────────────────────────────
@@ -224,7 +227,7 @@ export default class CharScene extends Phaser.Scene {
 		this.nameText = this.add.text(padX, padY, char.name.toUpperCase(), {
 			fontFamily: titleFont,
 			fontStyle: "bold",
-			fontSize: "88px",
+			fontSize: "5.5rem",
 			color: char.color,
 			stroke: "#ffffff",
 			strokeThickness: 6,
@@ -238,7 +241,7 @@ export default class CharScene extends Phaser.Scene {
 		this.descText = this.add.text(padX, descY, char.character_description, {
 			fontFamily: "Arial",
 			fontStyle: "bold",
-			fontSize: "21px",
+			fontSize: "1.3125rem",
 			color: "#ffffff",
 			wordWrap: { width: maxW, useAdvancedWrap: true },
 			lineSpacing: 5,
@@ -261,6 +264,25 @@ export default class CharScene extends Phaser.Scene {
 			.setOrigin(0.5)
 			.setDisplaySize(displayW, displayH)
 			.setDepth(5);
+
+		this.createCarImage(w, h);
+	}
+
+	createCarImage(w, h) {
+		const char = this.characters[this.currentIndex];
+		// Position on the first stripe — roughly center of strip 1
+		const scale = h / 816;
+		const carX = w * 0.5 + 1 * scale;
+		const carY = 513.61 * scale;
+
+		const carDisplayW = h * 0.18;
+		const carDisplayH = carDisplayW * 0.5; // assume roughly 2:1 aspect
+
+		this.carImage = this.add.image(carX, carY, char.name + "_car")
+			.setOrigin(0.5)
+			.setDisplaySize(carDisplayW, carDisplayH)
+			.setAngle(-28.23)   // match stripe rotation
+			.setDepth(6);       // above stripe (depth 5), below UI (depth 10+)
 	}
 
 	// ─────────────────────────────────────────────────────────────
@@ -283,7 +305,7 @@ export default class CharScene extends Phaser.Scene {
 		// Arrows
 		const arrowStyle = {
 			fontFamily: "Arial",
-			fontSize: "56px",
+			fontSize: "3.5rem",
 			fontStyle: "bold",
 			color: "#ffffff",
 			resolution: this.dpr,
@@ -445,7 +467,7 @@ export default class CharScene extends Phaser.Scene {
 		const txt = this.add.text(0, 0, label, {
 			fontFamily: "Arial",
 			fontStyle: "bold",
-			fontSize: "24px",
+			fontSize: "1.5rem",
 			color: textColor,
 			resolution: this.dpr,
 		}).setOrigin(0.5);
@@ -463,7 +485,7 @@ export default class CharScene extends Phaser.Scene {
 	createWaitingText(w, h) {
 		this.waitingText = this.add.text(w / 2, h * 0.95, "", {
 			fontFamily: "Arial",
-			fontSize: "20px",
+			fontSize: "1.25rem",
 			color: "#ffffff",
 			resolution: this.dpr,
 		}).setOrigin(0.5).setDepth(25);
@@ -556,6 +578,38 @@ export default class CharScene extends Phaser.Scene {
 			thumb.container.setSize(newSize, newSize);
 		});
 
+		// ── Car image update ──
+		const scale = h / 816;
+		const carX = w * 0.5 + 500 * scale;
+		const carY = 200 * scale;
+		const carDisplayW = h * 0.18;
+		const carDisplayH = this.carImage.height * (carDisplayW / this.carImage.width);
+
+		if (this.carImage) {
+			const oldCar = this.carImage;
+			this.tweens.add({
+				targets: oldCar,
+				alpha: 0,
+				duration: 180,
+				ease: "Cubic.easeOut",
+				onComplete: () => oldCar.destroy()
+			});
+		}
+
+		this.carImage = this.add.image(carX, carY, char.name + "_car")
+			.setOrigin(0.5)
+			.setDisplaySize(carDisplayW, carDisplayH)
+			.setAngle(120)
+			.setDepth(6)
+			.setAlpha(0);
+
+		this.tweens.add({
+			targets: this.carImage,
+			alpha: 1,
+			duration: 220,
+			ease: "Cubic.easeOut"
+		});
+
 		this.time.delayedCall(10, () => this.repositionCarousel(w, h));
 	}
 
@@ -632,6 +686,14 @@ export default class CharScene extends Phaser.Scene {
 		if (this.backBtn) this.backBtn.setPosition(padX + btnW / 2, btnY);
 		if (this.startBtn) this.startBtn.setPosition(w - padX - btnW / 2, btnY);
 		if (this.waitingText) this.waitingText.setPosition(w / 2, h * 0.95);
+		if (this.carImage) {
+			const scale = h / 816;
+			const carX = w * 0.5 + 231.95 * scale;
+			const carY = 513.61 * scale;
+			const carDisplayW = h * 0.18;
+			const carDisplayH = carDisplayW * 0.5;
+			this.carImage.setPosition(carX, carY).setDisplaySize(carDisplayW, carDisplayH);
+		}
 	}
 
 	// ─────────────────────────────────────────────────────────────

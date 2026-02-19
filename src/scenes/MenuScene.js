@@ -27,7 +27,9 @@ export default class MenuScene extends Phaser.Scene {
                 offsetY:        0,
                 mobileOffsetX:  -150,
                 mobileOffsetY:  0,
-                callback:       () => console.log("Credits pressed!"),
+                callback:       () => {
+					this.scene.start("CreditsScene");
+				},
             },
             {
                 id:             "batButton",

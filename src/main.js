@@ -3,6 +3,7 @@ import RaceScene from "./scenes/RaceScene.js";
 import UIScene from "./scenes/uiScene.js";
 import CharScene from "./scenes/CharScene.js";
 import FinishOverlay from './scenes/FinishOverlay.js';
+import CreditsScene from './scenes/CreditsScene.js';
 
 const config = {
 	type: Phaser.AUTO,
@@ -41,7 +42,7 @@ const config = {
 		activePointers: 3
 	},
 
-	scene: [MenuScene, RaceScene, UIScene, CharScene, FinishOverlay]
+	scene: [MenuScene, RaceScene, UIScene, CharScene, FinishOverlay, CreditsScene],
 };
 
 new Phaser.Game(config);

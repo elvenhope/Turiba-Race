@@ -1,3 +1,5 @@
+import NPCCar from '../objects/NPCCar.js';
+
 export default class RaceScene extends Phaser.Scene {
 	constructor() {
 		super("RaceScene");
@@ -7,7 +9,7 @@ export default class RaceScene extends Phaser.Scene {
 		this.steerLeft = false;
 		this.steerRight = false;
 
-		this.acceleration = 0.0001;  // Tuned for delta-time (was 0.003)
+		this.acceleration = 0.0001;
 		this.maxSpeed = 20;
 
 		this.socket = null;
@@ -29,6 +31,9 @@ export default class RaceScene extends Phaser.Scene {
 		this.myFinishPosition = null;
 		this.myPlayerName = null;
 		this.selectedChar = null;
+
+		this.npcCars = [];
+		this.isHost = false;
 	}
 
 	init(data) {
@@ -38,105 +43,90 @@ export default class RaceScene extends Phaser.Scene {
 		this.maxLaps = data.roomData.maxLaps || 3;
 		this.selectedChar = data.selectedChar;
 
-		// Reset all internal state for clean start
 		this.touchAccel = false;
 		this.touchBrake = false;
 		this.steerLeft = false;
 		this.steerRight = false;
-		
+
 		this.remotePlayers = {};
 		this.lastNetUpdate = 0;
-		
+
 		this.currentLap = 0;
 		this.hasFinished = false;
 		this.checkpoints = [];
 		this.passedCheckpoints = new Set();
 		this.totalCheckpoints = 0;
-		
+
 		this.myFinishPosition = null;
 		this.myPlayerName = null;
+
+		this.npcCars = [];
+		this.isHost = false;
 	}
 
 	preload() {
 		this.load.image("track_background.png", "assets/track_background.png");
 		this.load.image("trees.png", "assets/trees.png");
 		this.load.tilemapTiledJSON("trackTMJ", "assets/Track.tmj");
-		
-		// Load all character cars (including for local player)
+
 		const allCharacters = [
-			{ name: "Tourism Faculty", car_path: "assets/Cars/Tourism.png" },
-			{ name: "IT Faculty", car_path: "assets/Cars/ITF.png" },
-			{ name: "Law Faculty", car_path: "assets/Cars/Law.png" },
-			{ name: "Business Faculty", car_path: "assets/Cars/Business.png" },
-			{ name: "Communications Faculty", car_path: "assets/Cars/Communications.png" },
-			{ name: "Healthcare Department", car_path: "assets/Cars/Healthcare.png" },
-			{ name: "Organization Department", car_path: "assets/Cars/Organization.png" },
+			{ name: "TOURISM AND HOSPITALITY", car_path: "assets/Cars/Tourism.png" },
+			{ name: "INFORMATION TECHNOLOGIES", car_path: "assets/Cars/ITF.png" },
+			{ name: "LAW SCIENCE", car_path: "assets/Cars/Law.png" },
+			{ name: "BUSINESS ADMINISTRATION", car_path: "assets/Cars/Business.png" },
+			{ name: "COMMUNICATION SCIENCE", car_path: "assets/Cars/Communications.png" },
+			{ name: "HEALTHCARE", car_path: "assets/Cars/Healthcare.png" },
+			{ name: "ORGANIZATION MANAGEMENT", car_path: "assets/Cars/Organization.png" },
 		];
-		
+
 		allCharacters.forEach(char => {
 			this.load.image(char.name + "_car", char.car_path);
 		});
 	}
 
 	create() {
-		// Reset all state variables to initial values
 		this.touchAccel = false;
 		this.touchBrake = false;
 		this.steerLeft = false;
 		this.steerRight = false;
-		
+
 		this.remotePlayers = {};
 		this.lastNetUpdate = 0;
-		
+
 		this.currentLap = 0;
 		this.hasFinished = false;
 		this.checkpoints = [];
 		this.passedCheckpoints = new Set();
 		this.totalCheckpoints = 0;
-		
+
 		this.myFinishPosition = null;
-		
+
 		const map = this.make.tilemap({ key: "trackTMJ" });
 
-		// Get the raw Tiled data to access image layers
 		const tiledData = this.cache.tilemap.get("trackTMJ").data;
-
-		// Create image layers
 		tiledData.layers.forEach(layer => {
 			if (layer.type === 'imagelayer') {
 				const img = this.add.image(layer.x || 0, layer.y || 0, layer.image);
 				img.setOrigin(0, 0);
-
-				// Set depth based on layer name
-				if (layer.name === 'Background') {
-					img.setDepth(0);
-				} else if (layer.name === 'Trees') {
-					img.setDepth(20);
-				}
+				if (layer.name === 'Background') img.setDepth(0);
+				else if (layer.name === 'Trees') img.setDepth(20);
 			}
 		});
 
-		// Set world bounds
 		this.matter.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
-		// Get the Collisions layer
 		const collisionLayer = map.getObjectLayer('Collisions');
-
 		collisionLayer.objects.forEach(obj => {
 			if (obj.rectangle) {
-				const body = this.matter.add.rectangle(
+				this.matter.add.rectangle(
 					obj.x + obj.width / 2,
 					obj.y + obj.height / 2,
 					obj.width,
 					obj.height,
-					{
-						isStatic: true,
-						angle: obj.rotation * (Math.PI / 180)
-					}
+					{ isStatic: true, angle: obj.rotation * (Math.PI / 180) }
 				);
 			}
 		});
-
 
 		// --- Checkpoints ---
 		const checkpointLayer = map.getObjectLayer("Checkpoints");
@@ -180,20 +170,39 @@ export default class RaceScene extends Phaser.Scene {
 		const myCarKey = this.selectedChar.name + "_car";
 		this.car = this.matter.add.sprite(me.spawnX, me.spawnY, myCarKey);
 		this.car.setDisplaySize(60, this.car.height * (60 / this.car.width));
-		this.car.setMass(1);  // Fixed mass so all cars behave identically regardless of texture size
+		this.car.setMass(1);
 		this.car.setFrictionAir(0.05);
 		this.car.setBounce(0);
 		this.car.setFixedRotation();
 		this.car.setDepth(10);
 
-		// Spawn remote players
-		if (this.roomData && this.roomData.players) {
-			this.roomData.players.forEach(player => {
-				if (player.id !== this.socket.id) {
-					this.spawnRemotePlayer(player.id, player.spawnX, player.spawnY, player.name);
-				}
-			});
-		}
+		this.isHost = this.roomData.players[0].id === this.socket.id;
+
+		// --- Spawn players ---
+		// Keep a Set of IDs handled as NPCs so the remote player loop skips them
+		const npcIds = new Set();
+
+		this.roomData.players.forEach(player => {
+			if (!player.isNPC) return;
+			npcIds.add(player.id);
+
+			const npc = new NPCCar(
+				this,
+				player.id,
+				player.spawnX,
+				player.spawnY,
+				player.name + "_car",
+				this.isHost
+			);
+			this.npcCars.push(npc);
+		});
+
+		// Spawn remote HUMAN players only (skip local player and all NPCs)
+		this.roomData.players.forEach(player => {
+			if (player.id === this.socket.id) return;  // skip self
+			if (npcIds.has(player.id)) return;          // skip NPCs — already spawned above
+			this.spawnRemotePlayer(player.id, player.spawnX, player.spawnY, player.name);
+		});
 
 		// Camera
 		this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
@@ -214,21 +223,58 @@ export default class RaceScene extends Phaser.Scene {
 		uiScene.events.on("down-down", () => (this.touchBrake = true));
 		uiScene.events.on("down-up", () => (this.touchBrake = false));
 
-		// Send initial lap info to UIScene
 		uiScene.events.emit("lapUpdate", this.currentLap, this.maxLaps);
 
 		// --- Collision detection ---
+		// =============================================================================
+		// Replace ONLY the collisionstart block in RaceScene.create()
+		// The critical fix: use strict `===` body identity and explicitly verify
+		// the matched body belongs to THIS car before calling any lap method.
+		// An NPC body can never satisfy `=== this.car.body` and vice versa.
+		// =============================================================================
+
 		this.matter.world.on("collisionstart", (event) => {
 			event.pairs.forEach(pair => {
 				const { bodyA, bodyB } = pair;
 
-				if (bodyA === this.car.body || bodyB === this.car.body) {
-					const otherBody = bodyA === this.car.body ? bodyB : bodyA;
+				// ── Local player ───────────────────────────────────────────────────
+				// Only proceed if one of the two bodies is exactly this.car.body.
+				// Store the result so we don't call it twice if both bodies somehow matched.
+				const playerBody = this.car.body;
+				if (bodyA === playerBody || bodyB === playerBody) {
+					const other = bodyA === playerBody ? bodyB : bodyA;
 
-					if (otherBody.label && otherBody.label.startsWith("checkpoint_")) {
-						this.onCheckpointCrossed(otherBody.checkpointId);
-					} else if (otherBody.label === "finishLine") {
-						this.onFinishLineCrossed();
+					// Extra guard: make sure `other` is not also the player body
+					// (shouldn't happen, but eliminates any edge case)
+					if (other !== playerBody) {
+						if (other.label?.startsWith("checkpoint_")) {
+							this.onCheckpointCrossed(other.checkpointId);
+						} else if (other.label === "finishLine") {
+							this.onFinishLineCrossed();
+						}
+					}
+
+					// Early return — if this pair involved the player, it cannot
+					// also involve an NPC (a body can only be in one sprite).
+					return;
+				}
+
+				// ── NPC cars (host only) ───────────────────────────────────────────
+				// Only runs if the player body was NOT in this pair.
+				if (this.isHost) {
+					for (const npc of this.npcCars) {
+						const npcBody = npc.sprite.body;
+						if (bodyA === npcBody || bodyB === npcBody) {
+							const other = bodyA === npcBody ? bodyB : bodyA;
+							if (other !== npcBody) {
+								if (other.label?.startsWith("checkpoint_")) {
+									npc.onCheckpointCrossed(other.checkpointId);
+								} else if (other.label === "finishLine") {
+									npc.onFinishLineCrossed();
+								}
+							}
+							break; // a body belongs to exactly one NPC — stop searching
+						}
 					}
 				}
 			});
@@ -236,12 +282,7 @@ export default class RaceScene extends Phaser.Scene {
 
 		// Click coordinate logger
 		this.input.on('pointerdown', (pointer) => {
-			const worldX = pointer.worldX;
-			const worldY = pointer.worldY;
-
-			console.log(`Click at screen: (${pointer.x.toFixed(2)}, ${pointer.y.toFixed(2)})`);
-			console.log(`Click at world: (${worldX.toFixed(2)}, ${worldY.toFixed(2)})`);
-			console.log(`Camera at: (${this.cameras.main.scrollX.toFixed(2)}, ${this.cameras.main.scrollY.toFixed(2)})`);
+			console.log(`Click at world: (${pointer.worldX.toFixed(2)}, ${pointer.worldY.toFixed(2)})`);
 		});
 
 		this.setupSocketEvents();
@@ -250,13 +291,20 @@ export default class RaceScene extends Phaser.Scene {
 	setupSocketEvents() {
 		if (!this.socket) return;
 
-		// Remove any existing listeners to prevent duplicates
 		this.socket.off("playerMoved");
 		this.socket.off("playerLapUpdate");
 		this.socket.off("playerFinishedRace");
 		this.socket.off("disconnect");
 
 		this.socket.on("playerMoved", (data) => {
+			// Route to NPC interpolation if it matches an NPC id
+			const npc = this.npcCars.find(n => n.npcId === data.id);
+			if (npc) {
+				npc.setTarget(data.x, data.y, data.rotation);
+				return;
+			}
+
+			// Otherwise update remote human player
 			const remote = this.remotePlayers[data.id];
 			if (!remote) return;
 			remote.targetX = data.x;
@@ -267,6 +315,7 @@ export default class RaceScene extends Phaser.Scene {
 		this.socket.on("playerLapUpdate", (data) => {
 			console.log(`${data.playerName} completed lap ${data.currentLap}/${data.maxLaps}`);
 
+			// Update lap counter for remote human players (NPCs don't have a remotePlayers entry)
 			const remote = this.remotePlayers[data.playerId];
 			if (remote) {
 				remote.currentLap = data.currentLap;
@@ -276,23 +325,52 @@ export default class RaceScene extends Phaser.Scene {
 		this.socket.on("playerFinishedRace", (data) => {
 			console.log(`${data.playerName} finished in position ${data.position}`);
 
-			if (data.playerId === this.socket.id) {
-				this.myFinishPosition = data.position;
+			// NPC finishes are handled separately — never trigger the player overlay
+			if (data.isNPC) {
+				// Hide the specific NPC that just finished
+				const npc = this.npcCars.find(n => n.npcId === data.playerId);
+				if (npc && npc.sprite) {
+					npc.sprite.setVisible(false);
+				}
 
+				// If the player has already finished, refresh the overlay so the
+				// updated standings (including this bot's result) are shown
+				if (this.hasFinished && this.myFinishPosition !== null) {
+					this.scene.stop("FinishOverlay");
+					this.scene.launch("FinishOverlay", {
+						position: this.myFinishPosition,
+						playerName: this.myPlayerName,
+						finishOrder: data.finishOrder,
+						raceFinished: data.raceFinished,
+					});
+				}
+				return;
+			}
+
+			// Remove the finished remote human player's sprite from physics
+			const finishedRemote = this.remotePlayers[data.playerId];
+			if (finishedRemote && finishedRemote.sprite) {
+				this.matter.world.remove(finishedRemote.sprite.body);
+				finishedRemote.sprite.setVisible(false);
+			}
+
+			if (data.playerId === this.socket.id) {
+				// Local player finished
+				this.myFinishPosition = data.position;
 				this.scene.launch("FinishOverlay", {
 					position: data.position,
 					playerName: data.playerName,
 					finishOrder: data.finishOrder,
-					raceFinished: data.raceFinished
+					raceFinished: data.raceFinished,
 				});
-			}
-			else if (this.hasFinished && this.myFinishPosition !== null) {
+			} else if (this.hasFinished && this.myFinishPosition !== null) {
+				// Another human finished after us — refresh overlay with updated standings
 				this.scene.stop("FinishOverlay");
 				this.scene.launch("FinishOverlay", {
 					position: this.myFinishPosition,
 					playerName: this.myPlayerName,
 					finishOrder: data.finishOrder,
-					raceFinished: data.raceFinished
+					raceFinished: data.raceFinished,
 				});
 			}
 		});
@@ -347,7 +425,6 @@ export default class RaceScene extends Phaser.Scene {
 		this.currentLap++;
 		this.passedCheckpoints.clear();
 
-		// Notify UIScene to update lap display
 		const uiScene = this.scene.get("UIScene");
 		if (uiScene) {
 			uiScene.events.emit("lapUpdate", this.currentLap, this.maxLaps);
@@ -360,6 +437,7 @@ export default class RaceScene extends Phaser.Scene {
 
 		if (this.currentLap >= this.maxLaps) {
 			this.hasFinished = true;
+			this.matter.world.remove(this.car.body);
 			this.car.setVelocity(0, 0);
 			this.car.setAngularVelocity(0);
 			this.myFinishPosition = null;
@@ -367,6 +445,8 @@ export default class RaceScene extends Phaser.Scene {
 	}
 
 	update(time, delta) {
+		// --- NPC UPDATE ---
+		this.npcCars.forEach(npc => npc.update(time, delta));
 		if (this.hasFinished) {
 			Object.values(this.remotePlayers).forEach(remote => {
 				remote.sprite.setPosition(
@@ -377,6 +457,8 @@ export default class RaceScene extends Phaser.Scene {
 					Phaser.Math.Angle.RotateTo(remote.sprite.rotation, remote.targetRotation, 0.1)
 				);
 			});
+			// // Keep interpolating NPCs even after player finishes
+			// this.npcCars.forEach(npc => npc.update(time, delta));
 			return;
 		}
 
@@ -384,7 +466,6 @@ export default class RaceScene extends Phaser.Scene {
 		const accelerating = this.cursors.up.isDown || this.touchAccel;
 		const braking = this.cursors.down.isDown || this.touchBrake;
 
-		// Multiply force by delta so speed is frame-rate independent
 		if (accelerating) {
 			const force = this.matter.vector.rotate({ x: this.acceleration * delta, y: 0 }, this.car.rotation);
 			this.car.applyForce(force);
@@ -397,7 +478,6 @@ export default class RaceScene extends Phaser.Scene {
 		if (this.cursors.left.isDown || this.steerLeft) steer = -1;
 		else if (this.cursors.right.isDown || this.steerRight) steer = 1;
 
-		// Multiply angular velocity by delta so steering is frame-rate independent
 		this.car.setAngularVelocity(steer * 0.003 * delta);
 
 		const vel = this.car.body.velocity;
@@ -437,20 +517,16 @@ export default class RaceScene extends Phaser.Scene {
 	}
 
 	shutdown() {
-		// Clean up remote players
+		this.npcCars.forEach(npc => npc.destroy());
+		this.npcCars = [];
+
 		Object.values(this.remotePlayers).forEach(p => {
-			if (p.sprite) {
-				p.sprite.destroy();
-			}
+			if (p.sprite) p.sprite.destroy();
 		});
 		this.remotePlayers = {};
 
-		// Clean up car reference
-		if (this.car) {
-			this.car = null;
-		}
-		
-		// Clean up socket listeners
+		if (this.car) this.car = null;
+
 		if (this.socket) {
 			this.socket.off("playerMoved");
 			this.socket.off("playerLapUpdate");
@@ -458,12 +534,10 @@ export default class RaceScene extends Phaser.Scene {
 			this.socket.off("disconnect");
 		}
 
-		// Clean up Matter.js collision listener
 		if (this.matter && this.matter.world) {
 			this.matter.world.off("collisionstart");
 		}
 
-		// Clean up input listener
 		if (this.input) {
 			this.input.off("pointerdown");
 		}

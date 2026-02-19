@@ -57,6 +57,7 @@ export default class CharScene extends Phaser.Scene {
 		this.currentIndex = 0;
 		this.socket = null;
 		this.isConnecting = false;
+		this.currentRoomId = null;
 
 		// ── Carousel tunables ─────────────────────────────────────
 		this.THUMB_SIZE = 120;
@@ -90,6 +91,7 @@ export default class CharScene extends Phaser.Scene {
 	create() {
 		this.uiCreated = false;
 		this.currentIndex = 0;
+		this.currentRoomId = null;
 
 		WebFont.load({
 			custom: { families: ["CamingoDos Pro"] },
@@ -127,42 +129,35 @@ export default class CharScene extends Phaser.Scene {
 	}
 
 	// ─────────────────────────────────────────────────────────────
-	//  CAR POSITION / SIZE HELPER
-	//  Central place for all car geometry so createCarImage,
-	//  switchCharacter, and onResize all stay in sync.
+	//  CAR LAYOUT HELPER
 	// ─────────────────────────────────────────────────────────────
 	getCarLayout(w, h) {
-	const scale = h / 816;
+		const scale = h / 816;
+		const aspectRatio = w / h;
+		const isWideMobile = aspectRatio > 1.9;
 
-	// Same logic as MenuScene
-	const aspectRatio = w / h;
-	const isWideMobile = aspectRatio > 1.9;
+		const carX = isWideMobile
+			? w * 0.7 - 300 * scale
+			: w * 0.7 + 200 * scale;
 
-	const carX = isWideMobile
-		? w * 0.7 - 300 * scale   // mobile layout
-		: w * 0.7 + 200 * scale;  // desktop layout
+		const carY = isWideMobile
+			? 200 * scale + h * 0.04
+			: 200 * scale - h * 0.06;
 
-	const carY = isWideMobile
-		? 200 * scale + h * 0.04
-		: 200 * scale - h * 0.06;
+		const ref = Math.min(w, h);
+		const carDisplayW = Phaser.Math.Clamp(ref * 0.28, 80, 300);
 
-	// Size relative to smaller dimension
-	const ref = Math.min(w, h);
-	const carDisplayW = Phaser.Math.Clamp(ref * 0.28, 80, 300);
+		let carDisplayH = carDisplayW * 0.5;
+		const char = this.characters[this.currentIndex];
+		const key  = char.name + "_car";
 
-	// Preserve aspect ratio
-	let carDisplayH = carDisplayW * 0.5;
-	const char = this.characters[this.currentIndex];
-	const key  = char.name + "_car";
+		if (this.textures.exists(key)) {
+			const frame = this.textures.getFrame(key);
+			carDisplayH = carDisplayW * (frame.realHeight / frame.realWidth);
+		}
 
-	if (this.textures.exists(key)) {
-		const frame = this.textures.getFrame(key);
-		carDisplayH = carDisplayW * (frame.realHeight / frame.realWidth);
+		return { carX, carY, carDisplayW, carDisplayH };
 	}
-
-	return { carX, carY, carDisplayW, carDisplayH };
-}
-
 
 	// ─────────────────────────────────────────────────────────────
 	//  BACKGROUND
@@ -402,6 +397,8 @@ export default class CharScene extends Phaser.Scene {
 
 	// ─────────────────────────────────────────────────────────────
 	//  BUTTONS
+	//  Layout: [BACK]                    [START]
+	//  After joining lobby:  [BACK]      [START]  [RACE]
 	// ─────────────────────────────────────────────────────────────
 	createButtons(w, h) {
 		const btnW = 190;
@@ -412,20 +409,59 @@ export default class CharScene extends Phaser.Scene {
 		this.backBtn = this.makeButton(
 			padX + btnW / 2, btnY, btnW, btnH,
 			"BACK",
-			null,
-			0xF7934E, 5,
-			"#F7934E",
+			null, 0xF7934E, 5, "#F7934E",
 			() => this.scene.start("MenuScene")
 		);
 
+		// START sits at the far right initially (sole right button)
 		this.startBtn = this.makeButton(
 			w - padX - btnW / 2, btnY, btnW, btnH,
 			"START",
-			0x56A7DE,
-			null, 0,
-			"#ffffff",
-			() => this.chooseCharacter()
+			0x56A7DE, null, 0, "#ffffff",
+			() => this.joinLobby()
 		);
+
+		// RACE is hidden — revealed once the player is in a lobby
+		this.raceBtn = this.makeButton(
+			w - padX - btnW / 2, btnY, btnW, btnH,   // position corrected in showRaceButton()
+			"RACE",
+			0x43A047, null, 0, "#ffffff",
+			() => this.startWithNPCs()
+		);
+		this.raceBtn.setAlpha(0).disableInteractive();
+	}
+
+	// Slide START left and fade RACE in next to it
+	showRaceButton() {
+		const w    = this.scale.width;
+		const h    = this.scale.height;
+		const btnW = 190;
+		const btnH = 58;
+		const padX = w * 0.04;
+		const btnY = h * 0.91;
+		const gap  = 16;
+
+		const startX = w - padX - btnW * 1.5 - gap;
+		const raceX  = w - padX - btnW / 2;
+
+		// Slide START to the left
+		this.tweens.add({
+			targets: this.startBtn,
+			x: startX,
+			duration: 250,
+			ease: "Cubic.easeOut",
+		});
+
+		// Position RACE offscreen to the right, then slide in
+		this.raceBtn.setPosition(raceX + 80, btnY).setAlpha(0);
+		this.tweens.add({
+			targets: this.raceBtn,
+			x: raceX,
+			alpha: 1,
+			duration: 250,
+			ease: "Cubic.easeOut",
+			onComplete: () => this.raceBtn.setInteractive({ useHandCursor: true }),
+		});
 	}
 
 	makeButton(x, y, bw, bh, label, fillColor, strokeColor, strokeThick, textColor, callback) {
@@ -522,7 +558,7 @@ export default class CharScene extends Phaser.Scene {
 			ease: "Cubic.easeOut"
 		});
 
-		// ── Carousel thumbnail resize ──
+		// Carousel thumbnail resize
 		this.thumbContainers.forEach((thumb, i) => {
 			const isNowActive = i === this.currentIndex;
 			const wasActive   = i === prevIndex;
@@ -549,7 +585,7 @@ export default class CharScene extends Phaser.Scene {
 			thumb.container.setSize(newSize, newSize);
 		});
 
-		// ── Car image: fade old out, create new with correct responsive size ──
+		// Car image swap
 		const { carX, carY, carDisplayW, carDisplayH } = this.getCarLayout(w, h);
 
 		if (this.carImage) {
@@ -577,17 +613,19 @@ export default class CharScene extends Phaser.Scene {
 	}
 
 	// ─────────────────────────────────────────────────────────────
-	//  SERVER CONNECTION
+	//  SERVER CONNECTION — START button
+	//  Joins the lobby and waits. Reveals RACE button on first roomUpdate.
 	// ─────────────────────────────────────────────────────────────
-	chooseCharacter() {
+	joinLobby() {
 		if (this.isConnecting) return;
 		this.isConnecting = true;
 
-		if (this.startBtn) this.startBtn.disableInteractive();
+		this.startBtn.disableInteractive();
 		this.waitingText.setText("Connecting to server...");
 
 		const selectedChar = this.characters[this.currentIndex];
 		this.socket = io("https://turiba-race-server.onrender.com");
+		// this.socket = io("http://localhost:3000");
 
 		this.socket.on("connect", () => {
 			if (!this.scene.isActive()) return;
@@ -595,14 +633,29 @@ export default class CharScene extends Phaser.Scene {
 			this.socket.emit("joinRace", { name: selectedChar.name, character: selectedChar });
 		});
 
+		// First roomUpdate — we're in the lobby, reveal RACE button
+		this.socket.once("roomUpdate", (room) => {
+			if (!this.scene.isActive()) return;
+			this.currentRoomId = room.id;
+			const realCount = room.players.filter(p => !p.isNPC).length;
+			this.waitingText.setText(`Players in room: ${realCount}/4`);
+			this.showRaceButton();
+		});
+
+		// Subsequent roomUpdates — keep player count fresh
 		this.socket.on("roomUpdate", (room) => {
 			if (!this.scene.isActive()) return;
-			this.waitingText.setText(`Players in room: ${room.players.length}/4`);
+			this.currentRoomId = room.id;
+			const realCount = room.players.filter(p => !p.isNPC).length;
+			this.waitingText.setText(`Players in room: ${realCount}/4`);
 		});
 
 		this.socket.on("startRace", (room) => {
 			if (!this.scene.isActive()) return;
 			this.waitingText.setText("Race starting...");
+			// Lock both buttons so nobody clicks again during the delay
+			this.startBtn.disableInteractive();
+			this.raceBtn.disableInteractive();
 			this.time.delayedCall(500, () => {
 				this.scene.start("RaceScene", { selectedChar, socket: this.socket, roomData: room });
 				this.scene.launch("UIScene", { selectedChar });
@@ -613,8 +666,19 @@ export default class CharScene extends Phaser.Scene {
 			if (!this.scene.isActive()) return;
 			this.waitingText.setText("Disconnected from server.");
 			this.isConnecting = false;
-			if (this.startBtn) this.startBtn.setInteractive();
+			this.startBtn.setInteractive({ useHandCursor: true });
 		});
+	}
+
+	// ─────────────────────────────────────────────────────────────
+	//  RACE button — fill remaining slots with NPCs and start now
+	// ─────────────────────────────────────────────────────────────
+	startWithNPCs() {
+		if (!this.currentRoomId) return;
+		this.raceBtn.disableInteractive();
+		this.startBtn.disableInteractive();
+		this.waitingText.setText("Starting race with AI opponents...");
+		this.socket.emit("startWithNPCs", { roomId: this.currentRoomId });
 	}
 
 	// ─────────────────────────────────────────────────────────────
@@ -645,11 +709,21 @@ export default class CharScene extends Phaser.Scene {
 		const btnW = 190;
 		const btnH = 58;
 		const btnY = h * 0.91;
-		if (this.backBtn)  this.backBtn.setPosition(padX + btnW / 2, btnY);
-		if (this.startBtn) this.startBtn.setPosition(w - padX - btnW / 2, btnY);
+		const gap  = 16;
+
+		if (this.backBtn) this.backBtn.setPosition(padX + btnW / 2, btnY);
+
+		// Reposition right-side buttons based on whether RACE is visible
+		const raceVisible = this.raceBtn.alpha > 0;
+		if (raceVisible) {
+			if (this.startBtn) this.startBtn.setPosition(w - padX - btnW * 1.5 - gap, btnY);
+			if (this.raceBtn)  this.raceBtn.setPosition(w - padX - btnW / 2, btnY);
+		} else {
+			if (this.startBtn) this.startBtn.setPosition(w - padX - btnW / 2, btnY);
+		}
+
 		if (this.waitingText) this.waitingText.setPosition(w / 2, h * 0.95);
 
-		// ── Responsive car resize on window resize ──
 		if (this.carImage) {
 			const { carX, carY, carDisplayW, carDisplayH } = this.getCarLayout(w, h);
 			this.carImage.setPosition(carX, carY).setDisplaySize(carDisplayW, carDisplayH);

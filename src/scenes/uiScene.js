@@ -8,7 +8,6 @@ export default class UIScene extends Phaser.Scene {
 		this.steerRight = false;
 	}
 
-	// Touch controls only shown on mobile (wide aspect ratio = phone in landscape)
 	get isMobile() {
 		return (this.scale.width / this.scale.height) > 1.9;
 	}
@@ -21,12 +20,13 @@ export default class UIScene extends Phaser.Scene {
 	}
 
 	create() {
-		this.touchAccel  = false;
-		this.touchBrake  = false;
-		this.steerLeft   = false;
-		this.steerRight  = false;
-		this.overlay     = null;
+		this.touchAccel     = false;
+		this.touchBrake     = false;
+		this.steerLeft      = false;
+		this.steerRight     = false;
+		this.overlay        = null;
 		this.overlayButtons = [];
+		this.lapText        = null;   // explicitly null until constructed below
 
 		const { width, height } = this.scale;
 
@@ -42,9 +42,14 @@ export default class UIScene extends Phaser.Scene {
 			padding:         { x: 10, y: 5 },
 		}).setDepth(1000);
 
+		// Guard: only update lapText if it exists and is still active.
+		// RaceScene emits lapUpdate immediately after launching UIScene,
+		// which can arrive before create() finishes on slower frames.
 		this.events.off("lapUpdate");
 		this.events.on("lapUpdate", (currentLap, maxLaps) => {
-			this.lapText.setText(`Lap: ${currentLap}/${maxLaps}`);
+			if (this.lapText && this.lapText.active) {
+				this.lapText.setText(`Lap: ${currentLap}/${maxLaps}`);
+			}
 		});
 
 		// --- Arrow buttons ---
@@ -66,16 +71,13 @@ export default class UIScene extends Phaser.Scene {
 
 	// ─────────────────────────────────────────────────────────────
 	//  ARROW FACTORY
-	//  Fix: store img.baseScale after setDisplaySize so the release
-	//  tween returns to exactly that value — not scale=1 which equals
-	//  the texture's native pixel size and overshoots the display size.
 	// ─────────────────────────────────────────────────────────────
 	makeArrow(textureKey, dir) {
 		const img = this.add.image(0, 0, textureKey)
-			.setAlpha(0)          // hidden until positionArrows decides visibility
+			.setAlpha(0)
 			.setDepth(500);
 
-		img.baseScale = 1;        // updated by applyArrowSize()
+		img.baseScale = 1;
 
 		img.on("pointerdown", () => {
 			this.tweens.killTweensOf(img);
@@ -93,7 +95,7 @@ export default class UIScene extends Phaser.Scene {
 			this.tweens.killTweensOf(img);
 			this.tweens.add({
 				targets:  img,
-				scale:    img.baseScale,   // exact stored value, never overshoots
+				scale:    img.baseScale,
 				alpha:    0.85,
 				duration: 100,
 				ease:     "Sine.easeOut",
@@ -107,7 +109,6 @@ export default class UIScene extends Phaser.Scene {
 		return img;
 	}
 
-	// Set display size and immediately snapshot the resulting scaleX as baseScale
 	applyArrowSize(img, size) {
 		img.setDisplaySize(size, size);
 		img.baseScale = img.scaleX;
@@ -120,7 +121,6 @@ export default class UIScene extends Phaser.Scene {
 		const { width, height } = this.scale;
 		const mobile = this.isMobile;
 
-		// Show/hide + enable/disable interactivity based on platform
 		[this.leftBtn, this.rightBtn, this.upBtn, this.downBtn].forEach(btn => {
 			btn.setAlpha(mobile ? 0.85 : 0);
 			if (mobile) btn.setInteractive({ useHandCursor: true });
@@ -129,13 +129,10 @@ export default class UIScene extends Phaser.Scene {
 
 		if (!mobile) return;
 
-		// Larger arrows for touch — 18% of the shorter screen dimension
-		const s   = Math.min(width, height) * 0.18;
-		const gap = s * 1;
-		// Inset keeps arrows fully on screen (half arrow width + small margin)
+		const s    = Math.min(width, height) * 0.18;
+		const gap  = s * 1;
 		const inset = s * 1;
 
-		// ── Left / Right — bottom-left ──
 		const yLR    = height - inset;
 		const xLeft  = inset;
 		const xRight = inset + s + gap;
@@ -145,7 +142,6 @@ export default class UIScene extends Phaser.Scene {
 		this.leftBtn.setPosition(xLeft,  yLR);
 		this.rightBtn.setPosition(xRight, yLR);
 
-		// ── Up / Down — bottom-right ──
 		const xUD   = width - inset;
 		const yDown = height - inset;
 		const yUp   = yDown - s - gap;
@@ -155,10 +151,8 @@ export default class UIScene extends Phaser.Scene {
 		this.upBtn.setPosition(xUD, yUp);
 		this.downBtn.setPosition(xUD, yDown);
 
-		// Burger button
 		if (this.burgerBtn) this.burgerBtn.setPosition(50, 50);
 
-		// Overlay
 		if (this.overlay) {
 			const bg = this.overlay.getByName("bg");
 			if (bg) {
@@ -175,7 +169,7 @@ export default class UIScene extends Phaser.Scene {
 	onResize() {
 		if (!this.scene.isActive("UIScene")) return;
 		this.positionArrows();
-		if (this.lapText) {
+		if (this.lapText && this.lapText.active) {
 			this.lapText.setPosition(this.scale.width - 200, 16);
 		}
 	}
@@ -239,7 +233,7 @@ export default class UIScene extends Phaser.Scene {
 
 	handleOverlayAction(action) {
 		switch (action) {
-			case "Resume":       this.hideOverlay();  break;
+			case "Resume":       this.hideOverlay(); break;
 			case "Options":      console.log("Options clicked"); break;
 			case "Back to Menu": this.hideOverlay(); this.quitRace(); break;
 		}
@@ -248,6 +242,7 @@ export default class UIScene extends Phaser.Scene {
 	quitRace() {
 		const raceScene = this.scene.get("RaceScene");
 		if (raceScene && raceScene.socket) raceScene.socket.disconnect();
+		this.scene.stop("FinishOverlay");
 		this.scene.stop("RaceScene");
 		this.scene.stop("UIScene");
 		this.scene.start("MenuScene");
@@ -260,7 +255,26 @@ export default class UIScene extends Phaser.Scene {
 	}
 
 	shutdown() {
+		// Remove all listeners this scene registered so nothing fires
+		// into a destroyed scene on the next race launch
 		this.events.off("lapUpdate");
+		this.events.off("left-down");
+		this.events.off("left-up");
+		this.events.off("right-down");
+		this.events.off("right-up");
+		this.events.off("up-down");
+		this.events.off("up-up");
+		this.events.off("down-down");
+		this.events.off("down-up");
 		this.scale.off("resize", this.onResize, this);
+
+		// Destroy overlay cleanly if the scene is stopped mid-game
+		if (this.overlay) {
+			this.overlay.destroy(true);
+			this.overlay        = null;
+			this.overlayButtons = [];
+		}
+
+		this.lapText = null;
 	}
 }

@@ -4,49 +4,49 @@ export default class CharScene extends Phaser.Scene {
 
 		this.characters = [
 			{
-				name: "Tourism Faculty",
+				name: "TOURISM AND HOSPITALITY",
 				path: "assets/Characters/tourism.png",
 				car_path: "assets/Cars/Tourism.png",
 				character_description: "Tourism is one of the most dynamic, global and demanding sectors in the world. Studying in this field stands for learning how to organize and manage trips and journeys, the principles of hotel and other accommodation service management, the principles of catering, tourism logistics, and the very essence of business, as well as its cornerstones.",
 				color: "#65BD60"
 			},
 			{
-				name: "IT Faculty",
+				name: "INFORMATION TECHNOLOGIES",
 				path: "assets/Characters/ITF.png",
 				car_path: "assets/Cars/ITF.png",
 				character_description: "A bachelor's degree in computer systems is your opportunity to start a successful career in the tech industry. Professional specialists are prepared for starting independent work in the field of informatics with knowledge in computer system architecture, software engineering, system analysis, basic technologies of databases and artificial intelligence.",
 				color: "#404E55"
 			},
 			{
-				name: "Law Faculty",
+				name: "LAW SCIENCE",
 				path: "assets/Characters/law.png",
 				car_path: "assets/Cars/Law.png",
 				character_description: "Law studies at Turiba Business School provide an opportunity to obtain a Bachelor of Social Sciences degree in Law. A Bachelor of Laws prepares for further studies in a Master's program and independent research activities, as well as provides a theoretical basis for professional activities in areas related to law.",
 				color: "#809699"
 			},
 			{
-				name: "Business Faculty",
+				name: "BUSINESS ADMINISTRATION",
 				path: "assets/Characters/business.png",
 				car_path: "assets/Cars/Business.png",
 				character_description: "Study business administration at Turiba University and receive a degree that will be valued anywhere in Europe! Our bachelor's program in business administration has been designed to provide students with hands-on experience, to prepare them for the challenges they will face in their work.",
 				color: "#00587E"
 			},
 			{
-				name: "Communications Faculty",
+				name: "COMMUNICATION SCIENCE",
 				path: "assets/Characters/communications.png",
 				car_path: "assets/Cars/Communications.png",
 				character_description: "The International Communication Management program provides an opportunity to learn how to manage communication in an international environment. You will learn how to plan, organize and manage organization's international communication, analyze information, target audiences and information channels.",
 				color: "#F7934E"
 			},
 			{
-				name: "Healthcare Department",
+				name: "HEALTHCARE",
 				path: "assets/Characters/healthcare.png",
 				car_path: "assets/Cars/Healthcare.png",
 				character_description: "Cosmetology, body and facial massages, body cosmetic procedures, facial cosmetic procedures, mesotherapy and biorevitalization, electroprocedures, decorative cosmetics, holistic approach and procedures, hand and foot care, SPA massages, aromatherapy, basics of micropigmentation and tattooing.",
 				color: "#008674"
 			},
 			{
-				name: "Organization Department",
+				name: "ORGANIZATION MANAGEMENT",
 				path: "assets/Characters/organization.png",
 				car_path: "assets/Cars/Organization.png",
 				character_description: "Nowadays, organizational security is essential in both digital and physical environments. The demand for qualified security professionals is growing worldwide. Turiba Business School offers a bachelor's degree program in Organizational Security — the only one of its kind in the Baltics.",

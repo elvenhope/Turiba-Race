@@ -59,17 +59,14 @@ export default class CharScene extends Phaser.Scene {
 		this.isConnecting = false;
 
 		// ── Carousel tunables ─────────────────────────────────────
-		this.THUMB_SIZE = 120;    // inactive thumbnail square px
-		this.THUMB_SIZE_ACTIVE = 165;    // active thumbnail square px
-		this.THUMB_GAP = 16;     // gap between thumbnails px
+		this.THUMB_SIZE = 120;
+		this.THUMB_SIZE_ACTIVE = 165;
+		this.THUMB_GAP = 16;
 
-		// Fraction of character image height used as "head" region for crop
-		this.HEAD_CROP_FRACTION_X = 0.7;  // was 0.3
-		this.HEAD_CROP_FRACTION_Y = 0.35; // was 0.2
-
-		this.HEAD_CROP_FRACTION_X_ACTIVE = 1;  // show more width
+		this.HEAD_CROP_FRACTION_X = 0.7;
+		this.HEAD_CROP_FRACTION_Y = 0.35;
+		this.HEAD_CROP_FRACTION_X_ACTIVE = 1;
 		this.HEAD_CROP_FRACTION_Y_ACTIVE = 0.5;
-
 		this.HEAD_CROP_OFFSET_X = -150;
 		this.HEAD_CROP_OFFSET_Y = 100;
 		this.HEAD_CROP_OFFSET_X_ACTIVE = -10;
@@ -95,8 +92,6 @@ export default class CharScene extends Phaser.Scene {
 		this.currentIndex = 0;
 
 		WebFont.load({
-			// CamingoDos Pro must be declared via @font-face in your HTML.
-			// Barlow Condensed is a Google Fonts fallback with a similar bold-condensed feel.
 			custom: { families: ["CamingoDos Pro"] },
 			google: { families: ["Barlow Condensed:700"] },
 			active: () => this.buildUI(),
@@ -127,13 +122,47 @@ export default class CharScene extends Phaser.Scene {
 		if (this.socket) this.cleanupSocket();
 	}
 
-	// ─────────────────────────────────────────────────────────────
-	//  DPR — used to render text at native pixel density so it stays
-	//  crisp even when Phaser's canvas is CSS-scaled by EXPAND mode.
-	//  Clamped to 3 so very high-DPI phones don't waste memory.
 	get dpr() {
 		return Math.min(window.devicePixelRatio || 1, 3);
 	}
+
+	// ─────────────────────────────────────────────────────────────
+	//  CAR POSITION / SIZE HELPER
+	//  Central place for all car geometry so createCarImage,
+	//  switchCharacter, and onResize all stay in sync.
+	// ─────────────────────────────────────────────────────────────
+	getCarLayout(w, h) {
+	const scale = h / 816;
+
+	// Same logic as MenuScene
+	const aspectRatio = w / h;
+	const isWideMobile = aspectRatio > 1.9;
+
+	const carX = isWideMobile
+		? w * 0.7 - 300 * scale   // mobile layout
+		: w * 0.7 + 200 * scale;  // desktop layout
+
+	const carY = isWideMobile
+		? 200 * scale + h * 0.04
+		: 200 * scale - h * 0.06;
+
+	// Size relative to smaller dimension
+	const ref = Math.min(w, h);
+	const carDisplayW = Phaser.Math.Clamp(ref * 0.28, 80, 300);
+
+	// Preserve aspect ratio
+	let carDisplayH = carDisplayW * 0.5;
+	const char = this.characters[this.currentIndex];
+	const key  = char.name + "_car";
+
+	if (this.textures.exists(key)) {
+		const frame = this.textures.getFrame(key);
+		carDisplayH = carDisplayW * (frame.realHeight / frame.realWidth);
+	}
+
+	return { carX, carY, carDisplayW, carDisplayH };
+}
+
 
 	// ─────────────────────────────────────────────────────────────
 	//  BACKGROUND
@@ -143,75 +172,46 @@ export default class CharScene extends Phaser.Scene {
 		const g = this.add.graphics();
 		this.bgGraphics = g;
 
-		// Base light blue
 		g.fillStyle(0x4BA3D3, 1);
 		g.fillRect(0, 0, w, h);
 
 		this.drawStrips(g, w, h);
 	}
 
-	/**
-	 * Two diagonal decorative strips matching the Figma design.
-	 * They are tinted with the current character's color.
-	 *
-	 * Figma canvas: 1456 × 816
-	 * Both strips:  599.15 × 1594.10 px, rotated -28.23°
-	 *
-	 * Strip 1 top-left (660.37, -283.44)  → center (0.659, 0.629) normalized
-	 * Strip 2 top-left (1348.96, -134.90) → center (1.132, 0.811) normalized
-	 *                                        (partially off-screen right — intentional)
-	 * Strip w/h normalized to canvas:
-	 *   halfW = (599.15 / 1456) / 2 = 0.2057
-	 *   halfH = (1594.10 / 816) / 2 = 0.9767
-	 */
 	drawStrips(g, w, h) {
 		const char = this.characters[this.currentIndex];
 		const color = Phaser.Display.Color.HexStringToColor(char.color);
 
-		// Darken the character colour slightly for the strip
 		const darken = (c) => Math.max(0, c - 45);
 		const stripHex = Phaser.Display.Color.GetColor(
 			darken(color.r), darken(color.g), darken(color.b)
 		);
 
-		// / slash = top-right, bottom-left lean
-		// CCW rotation matrix (standard, y-axis down):
-		//   x' = x·cos - y·sin
-		//   y' = x·sin + y·cos
 		const angleRad = Phaser.Math.DegToRad(28.23);
 		const cosA = Math.cos(angleRad);
 		const sinA = Math.sin(angleRad);
 
-		// Size both dimensions relative to screen HEIGHT only — keeps strips
-		// visually identical on any aspect ratio (desktop wide or mobile landscape).
-		// Figma strip: 599.15 × 1594.10 px on 51rem-tall canvas.
-		const hw = (599.15 / 816 / 2) * h;   // half-width  ~0.367h
-		const hh = (1594.10 / 816 / 2) * h;   // half-height ~0.977h
+		const hw = (599.15 / 816 / 2) * h;
+		const hh = (1594.10 / 816 / 2) * h;
 
-		// Unrotated corners relative to strip centre
 		const localCorners = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]];
 
 		const drawStrip = (cx, cy, alpha) => {
 			const pts = localCorners.map(([lx, ly]) => new Phaser.Geom.Point(
-				lx * cosA - ly * sinA + cx,   // x' (CCW = / slash)
-				lx * sinA + ly * cosA + cy    // y'
+				lx * cosA - ly * sinA + cx,
+				lx * sinA + ly * cosA + cy
 			));
 			g.fillStyle(stripHex, alpha);
 			g.fillPoints(pts, true);
 		};
 
-		// Anchor X to screen centre so strips stay symmetric on any width.
-		// Figma canvas centre: 45.5rem. Strip centres relative to that:
-		//   Strip 1: (959.95 - 728) = +231.95, y = 513.61
-		//   Strip 2: (1648.54 - 728) = +920.54, y = 662.15
-		// All scaled by h/816 so they scale with the strips.
 		const scale = h / 816;
 		drawStrip(w * 0.5 + 231.95 * scale, 513.61 * scale, 1);
-		drawStrip(w * 0.5 + 920.54 * scale, 662.15 * scale, 1 );
+		drawStrip(w * 0.5 + 920.54 * scale, 630.15 * scale, 1);
 	}
 
 	// ─────────────────────────────────────────────────────────────
-	//  SECTION 1 — name + description, top-left quadrant
+	//  SECTION 1
 	// ─────────────────────────────────────────────────────────────
 	createSection1(w, h) {
 		const char = this.characters[this.currentIndex];
@@ -219,7 +219,6 @@ export default class CharScene extends Phaser.Scene {
 		const padY = h * 0.05;
 		const maxW = w * 0.44;
 
-		// Resolve font: prefer CamingoDos Pro, fall back to Barlow Condensed
 		const titleFont = this.isFontLoaded("CamingoDos Pro")
 			? "CamingoDos Pro"
 			: "Barlow Condensed";
@@ -250,7 +249,7 @@ export default class CharScene extends Phaser.Scene {
 	}
 
 	// ─────────────────────────────────────────────────────────────
-	//  SECTION 2 — character portrait, right half
+	//  SECTION 2 — portrait + car
 	// ─────────────────────────────────────────────────────────────
 	createSection2(w, h) {
 		const char = this.characters[this.currentIndex];
@@ -270,19 +269,13 @@ export default class CharScene extends Phaser.Scene {
 
 	createCarImage(w, h) {
 		const char = this.characters[this.currentIndex];
-		// Position on the first stripe — roughly center of strip 1
-		const scale = h / 816;
-		const carX = w * 0.5 + 1 * scale;
-		const carY = 513.61 * scale;
-
-		const carDisplayW = h * 0.18;
-		const carDisplayH = carDisplayW * 0.5; // assume roughly 2:1 aspect
+		const { carX, carY, carDisplayW, carDisplayH } = this.getCarLayout(w, h);
 
 		this.carImage = this.add.image(carX, carY, char.name + "_car")
 			.setOrigin(0.5)
 			.setDisplaySize(carDisplayW, carDisplayH)
-			.setAngle(-28.23)   // match stripe rotation
-			.setDepth(6);       // above stripe (depth 5), below UI (depth 10+)
+			.setAngle(120)
+			.setDepth(6);
 	}
 
 	// ─────────────────────────────────────────────────────────────
@@ -293,7 +286,7 @@ export default class CharScene extends Phaser.Scene {
 		this.carouselCenterX = w * 0.5;
 
 		this.thumbContainers = [];
-		const savedIndex = this.currentIndex; // preserve current index across creates
+		const savedIndex = this.currentIndex;
 		this.currentIndex = -1;
 
 		this.characters.forEach((_, i) => {
@@ -302,7 +295,6 @@ export default class CharScene extends Phaser.Scene {
 
 		this.currentIndex = savedIndex;
 
-		// Arrows
 		const arrowStyle = {
 			fontFamily: "Arial",
 			fontSize: "3.5rem",
@@ -334,14 +326,10 @@ export default class CharScene extends Phaser.Scene {
 
 		const container = this.add.container(0, 0).setDepth(15);
 
-		// Background
 		const bg = this.add.rectangle(0, 0, size, size, 0x1A3A50).setOrigin(0.5);
-
-		// Head-cropped render texture
 		const rt = this.add.renderTexture(0, 0, size, size).setOrigin(0.5);
 		this.drawHeadCrop(rt, char.name, size);
 
-		// Active border
 		const border = this.add.graphics();
 		if (isActive) {
 			border.lineStyle(4, 0xffffff, 1);
@@ -421,23 +409,19 @@ export default class CharScene extends Phaser.Scene {
 		const padX = w * 0.04;
 		const btnY = h * 0.91;
 
-		// BACK — transparent fill, orange outline
 		this.backBtn = this.makeButton(
 			padX + btnW / 2, btnY, btnW, btnH,
 			"BACK",
-			null,         // no fill
-			0xF7934E, 5,  // orange stroke
-			"#F7934E",    // orange text
-			() => {
-				this.scene.start("MenuScene")
-			}
+			null,
+			0xF7934E, 5,
+			"#F7934E",
+			() => this.scene.start("MenuScene")
 		);
 
-		// START — blue fill, no stroke
 		this.startBtn = this.makeButton(
 			w - padX - btnW / 2, btnY, btnW, btnH,
 			"START",
-			0x56A7DE,     // blue fill
+			0x56A7DE,
 			null, 0,
 			"#ffffff",
 			() => this.chooseCharacter()
@@ -448,12 +432,10 @@ export default class CharScene extends Phaser.Scene {
 		const c = this.add.container(x, y).setDepth(20);
 		const r = bh / 2;
 
-		// Shadow
 		const shadow = this.add.graphics();
 		shadow.fillStyle(0x000000, 0.25);
 		shadow.fillRoundedRect(-bw / 2 + 4, -bh / 2 + 4, bw, bh, r);
 
-		// Body
 		const body = this.add.graphics();
 		if (fillColor !== null) {
 			body.fillStyle(fillColor, 1);
@@ -477,7 +459,7 @@ export default class CharScene extends Phaser.Scene {
 		c.setInteractive({ useHandCursor: true });
 		c.on("pointerdown", callback);
 		c.on("pointerover", () => this.tweens.add({ targets: c, scale: 1.06, duration: 80, ease: "Sine.easeOut" }));
-		c.on("pointerout", () => this.tweens.add({ targets: c, scale: 1, duration: 80, ease: "Sine.easeOut" }));
+		c.on("pointerout",  () => this.tweens.add({ targets: c, scale: 1,    duration: 80, ease: "Sine.easeOut" }));
 
 		return c;
 	}
@@ -506,15 +488,12 @@ export default class CharScene extends Phaser.Scene {
 		const w = this.scale.width;
 		const h = this.scale.height;
 
-		// ── Redraw background strips in new character's colour ──
 		this.drawBackground(w, h);
 
-		// ── Section 1 update ──
 		this.nameText.setText(char.name.toUpperCase()).setColor(char.color);
 		this.descText.setText(char.character_description);
 		this.descText.setY(this.nameText.y + this.nameText.displayHeight + h * 0.02);
 
-		// ── Portrait slide ──
 		const portraitX = w * 0.73;
 		const portraitY = h * 0.47;
 		const displayH = h * 0.90;
@@ -546,28 +525,20 @@ export default class CharScene extends Phaser.Scene {
 		// ── Carousel thumbnail resize ──
 		this.thumbContainers.forEach((thumb, i) => {
 			const isNowActive = i === this.currentIndex;
-			const wasActive = i === prevIndex;
+			const wasActive   = i === prevIndex;
 
 			if (!isNowActive && !wasActive) return;
 
 			const newSize = isNowActive ? this.THUMB_SIZE_ACTIVE : this.THUMB_SIZE;
-			const oldSize = wasActive ? this.THUMB_SIZE_ACTIVE : this.THUMB_SIZE;
+			const oldSize = wasActive   ? this.THUMB_SIZE_ACTIVE : this.THUMB_SIZE;
 
-			// Scale trick: set to oldSize/newSize so the tween to scale=1 looks correct
 			thumb.container.setScale(oldSize / newSize);
-			this.tweens.add({
-				targets: thumb.container,
-				scale: 1,
-				duration: 200,
-				ease: "Cubic.easeOut",
-			});
+			this.tweens.add({ targets: thumb.container, scale: 1, duration: 200, ease: "Cubic.easeOut" });
 
-			// Redraw crop at new size
 			thumb.rt.resize(newSize, newSize);
 			this.drawHeadCrop(thumb.rt, this.characters[i].name, newSize, isNowActive);
 			thumb.bg.setSize(newSize, newSize);
 
-			// Redraw border
 			thumb.border.clear();
 			if (isNowActive) {
 				thumb.border.lineStyle(4, 0xffffff, 1);
@@ -578,15 +549,12 @@ export default class CharScene extends Phaser.Scene {
 			thumb.container.setSize(newSize, newSize);
 		});
 
-		// ── Car image update ──
-		const scale = h / 816;
-		const carX = w * 0.5 + 500 * scale;
-		const carY = 200 * scale;
-		const carDisplayW = h * 0.18;
-		const carDisplayH = this.carImage.height * (carDisplayW / this.carImage.width);
+		// ── Car image: fade old out, create new with correct responsive size ──
+		const { carX, carY, carDisplayW, carDisplayH } = this.getCarLayout(w, h);
 
 		if (this.carImage) {
 			const oldCar = this.carImage;
+			this.carImage = null;
 			this.tweens.add({
 				targets: oldCar,
 				alpha: 0,
@@ -603,12 +571,7 @@ export default class CharScene extends Phaser.Scene {
 			.setDepth(6)
 			.setAlpha(0);
 
-		this.tweens.add({
-			targets: this.carImage,
-			alpha: 1,
-			duration: 220,
-			ease: "Cubic.easeOut"
-		});
+		this.tweens.add({ targets: this.carImage, alpha: 1, duration: 220, ease: "Cubic.easeOut" });
 
 		this.time.delayedCall(10, () => this.repositionCarousel(w, h));
 	}
@@ -625,7 +588,6 @@ export default class CharScene extends Phaser.Scene {
 
 		const selectedChar = this.characters[this.currentIndex];
 		this.socket = io("https://turiba-race-server.onrender.com");
-		// this.socket = io("localhost:3000");
 
 		this.socket.on("connect", () => {
 			if (!this.scene.isActive()) return;
@@ -683,15 +645,13 @@ export default class CharScene extends Phaser.Scene {
 		const btnW = 190;
 		const btnH = 58;
 		const btnY = h * 0.91;
-		if (this.backBtn) this.backBtn.setPosition(padX + btnW / 2, btnY);
+		if (this.backBtn)  this.backBtn.setPosition(padX + btnW / 2, btnY);
 		if (this.startBtn) this.startBtn.setPosition(w - padX - btnW / 2, btnY);
 		if (this.waitingText) this.waitingText.setPosition(w / 2, h * 0.95);
+
+		// ── Responsive car resize on window resize ──
 		if (this.carImage) {
-			const scale = h / 816;
-			const carX = w * 0.5 + 231.95 * scale;
-			const carY = 513.61 * scale;
-			const carDisplayW = h * 0.18;
-			const carDisplayH = carDisplayW * 0.5;
+			const { carX, carY, carDisplayW, carDisplayH } = this.getCarLayout(w, h);
 			this.carImage.setPosition(carX, carY).setDisplaySize(carDisplayW, carDisplayH);
 		}
 	}
